@@ -15,4 +15,10 @@
 	(pad "4" thru_hole circle (at -1 0) (size 1.5 1.5) (drill 0.9) (layers "*.Cu" "*.Mask") (uuid "229a9c1d-e586-47ba-88d5-504dddb6da97"))
 	(pad "5" thru_hole circle (at -3 0) (size 1.5 1.5) (drill 0.9) (layers "*.Cu" "*.Mask") (uuid "2147a6b8-2506-4b8a-8573-b919999d5540"))
 	(pad "6" thru_hole circle (at -5 0) (size 1.5 1.5) (drill 0.9) (layers "*.Cu" "*.Mask") (uuid "ebf83e76-bf48-488c-834c-ff3f0c8d5603"))
+
+	(model "${KIPRJMOD}/../lib/WOOW.3dshapes/Ebelong_EPA09-4D.step"
+		(offset (xyz 0 0 0))
+		(scale (xyz 1 1 1))
+		(rotate (xyz 0 0 0))
+	)
 )

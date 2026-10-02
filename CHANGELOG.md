@@ -2,7 +2,18 @@
 
 格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號用 `硬體大版.小版`。
 
-## [2.0] — 安規改版（分支 `rev/v2.0`）
+## [2.0.1] — 設計驗證
+
+- 完整驗證報告 `docs/verification/`：ERC/DRC/parity、SPICE（ngspice）、PCB 計算器（IPC-2221）、熱分析、EMC 預檢、3D／STEP、kicadiff、Jobset。
+- PCB：新增 GND 縫合過孔（3mm 格點 88 顆＋訊號過孔旁 3 顆，移除孔距過近 1 顆）。DRC 仍為 0。
+- 自訂零件 3D 模型（`hardware/lib/WOOW.3dshapes/`，`scripts/make_3d_models.py`）。
+- `.kicad_jobset`：KiCad 原生一鍵產出，8/8 成功。
+- `.kicad_pro` MAINS 類別間距 2.5mm → 1.5mm，與 `.kicad_dru` 一致。
+- CI：新增 SPICE 模擬（繼電器關斷尖峰 < 20V 才通過）與 STEP 輸出。
+- 新增標籤 `v1.3`（含 V1.3 PCB；`v1.3-baseline` 只有原理圖）。
+- **發現**：市電 1.5mm 走線在 1oz 銅剛好等於保險絲 3.15A，負載 >3A 須改 2oz 銅。
+
+## [2.0] — 安規改版
 
 **檢查結果**：KiCad ERC 0 錯誤；DRC 0 錯誤、0 未連線、原理圖與 PCB 一致（含市電安規規則）。
 

@@ -1,0 +1,27 @@
+* WO30109 V2.0 繼電器驅動（K1–K4 同一電路）：STM32 GPIO → R5 1k → Q1 Si2302 → G5Q-1 DC12 線圈，D1 1N4148W 續流
+* 線圈：Omron G5Q-1 DC12 規格書 360Ω（33.3mA、400mW）；電感規格書未列，取 200mH（同級小型繼電器常見 100–500mH）
+* Si2302：Vth 0.63V、Rds(on) 57mΩ@4.5V、Vds max 20V（kicad-happy spice_part_library，Vishay 規格書）
+.param LCOIL=200m
+VDD  vdd  0 DC 12
+VGPIO gpio 0 PULSE(0 3.3 1m 10n 10n 20m 60m)
+R5   gpio g  1k
+R9   g    0  10k
+M1   d g 0 0 NSI2302 W=1 L=1
+.model NSI2302 NMOS(LEVEL=1 VTO=0.63 KP=26 LAMBDA=0.01 CGSO=1.2n CGDO=0.15n)
+RCOIL vdd c1 360
+LCOIL c1 d {LCOIL}
+VD1  d dk DC 0
+D1   dk vdd D1N4148
+.model D1N4148 D(IS=2.52n RS=0.568 N=1.752 CJO=4p M=0.4 TT=20n BV=100 IBV=100u)
+.tran 2u 40m
+.control
+run
+meas tran ICOIL_ON  find i(VDD) at=19m
+meas tran VG_ON     find v(g) at=19m
+meas tran VDS_ON    find v(d) at=19m
+meas tran VDS_PEAK  max v(d) from=21m to=25m
+meas tran ID1_PEAK  max i(VD1) from=20m to=40m
+meas tran T_DECAY   when i(VD1)=1m fall=1 td=21.1m
+wrdata relay_with_diode.csv v(d) i(VD1)
+.endc
+.end

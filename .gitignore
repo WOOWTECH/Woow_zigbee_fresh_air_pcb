@@ -25,3 +25,6 @@ __pycache__/
 # build_v20.sh 暫存
 *.kicad_pcb.pre_route
 *.kicad_pcb.best
+
+# SPICE 波形資料（由 sim/*.cir 產生）
+sim/*.csv

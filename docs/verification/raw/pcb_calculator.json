@@ -1,0 +1,117 @@
+{
+ "tracks": [
+  {
+   "net": "AC_L / AC_L_IN / DO_COM",
+   "width_mm": 1.5,
+   "length_mm": 100.6,
+   "need_A": 3.15,
+   "why": "F1 保險絲 T3.15A 限制所有輸出的總電流（繼電器 NO 額定 5A）",
+   "imax_dT10_A": 3.21,
+   "imax_dT20_A": 4.35,
+   "r_mohm": 35.5,
+   "vdrop_mV": 177.7,
+   "margin": 1.02,
+   "ok": true,
+   "imax_2oz_dT10_A": 5.3,
+   "imax_1oz_dT20_A": 4.35
+  },
+  {
+   "net": "DO_x_NO / DO_x_NC（各路輸出）",
+   "width_mm": 1.5,
+   "length_mm": 16.7,
+   "need_A": 3.15,
+   "why": "F1 保險絲 T3.15A 限制所有輸出的總電流（繼電器 NO 額定 5A）",
+   "imax_dT10_A": 3.21,
+   "imax_dT20_A": 4.35,
+   "r_mohm": 5.9,
+   "vdrop_mV": 29.5,
+   "margin": 1.02,
+   "ok": true,
+   "imax_2oz_dT10_A": 5.3,
+   "imax_1oz_dT20_A": 4.35
+  },
+  {
+   "net": "AC_N",
+   "width_mm": 1.0,
+   "length_mm": 66.2,
+   "need_A": 0.05,
+   "why": "只供 IRM-02（2W/230V ≈ 9mA，啟動湧浪另計）",
+   "imax_dT10_A": 2.39,
+   "imax_dT20_A": 3.24,
+   "r_mohm": 35.1,
+   "vdrop_mV": 1.8,
+   "margin": 47.8,
+   "ok": true
+  },
+  {
+   "net": "+12V",
+   "width_mm": 0.6,
+   "length_mm": 80.3,
+   "need_A": 0.15,
+   "why": "4 顆線圈 133mA + 降壓輸入 ~13mA",
+   "imax_dT10_A": 1.65,
+   "imax_dT20_A": 2.24,
+   "r_mohm": 70.9,
+   "vdrop_mV": 10.6,
+   "margin": 11.0,
+   "ok": true
+  },
+  {
+   "net": "COIL1–4",
+   "width_mm": 0.6,
+   "length_mm": 5.4,
+   "need_A": 0.034,
+   "why": "單顆線圈 33.3mA",
+   "imax_dT10_A": 1.65,
+   "imax_dT20_A": 2.24,
+   "r_mohm": 4.8,
+   "vdrop_mV": 0.2,
+   "margin": 48.6,
+   "ok": true
+  },
+  {
+   "net": "SW（降壓開關節點）",
+   "width_mm": 0.6,
+   "length_mm": 5.8,
+   "need_A": 0.6,
+   "why": "AP63203 峰值電感電流（最大 2A 級 IC，實際負載 ~40mA）",
+   "imax_dT10_A": 1.65,
+   "imax_dT20_A": 2.24,
+   "r_mohm": 5.1,
+   "vdrop_mV": 3.1,
+   "margin": 2.8,
+   "ok": true
+  },
+  {
+   "net": "+3V3 最細段",
+   "width_mm": 0.3,
+   "length_mm": 171.1,
+   "need_A": 0.1,
+   "why": "STM32 + ZS3L 發射峰值 ~100mA",
+   "imax_dT10_A": 1.0,
+   "imax_dT20_A": 1.36,
+   "r_mohm": 302.3,
+   "vdrop_mV": 30.2,
+   "margin": 10.0,
+   "ok": true
+  }
+ ],
+ "vias": [
+  {
+   "via": "0.6/0.3mm（GND、低壓訊號）",
+   "imax_dT10_A": 0.8
+  },
+  {
+   "via": "0.8/0.4mm（+3V3）",
+   "imax_dT10_A": 0.97
+  }
+ ],
+ "dividers": {
+  "gate": "R5 1k / R9 10k → Vgs = 3.3×10/11 = 3.00 V（Si2302 Vth 0.63V，Rds(on)@2.5V 規格內）",
+  "nrst": "R1 10k × C5 100nF = 1.0 ms 上電重置時間常數",
+  "led": "R4 100Ω：(3.3−Vf)/100 → Vf 2.8–3.2V 時 1–5mA（SPICE 3.8–7.1mA）",
+  "regulator": "AP63203 為固定 3.3V 輸出（內建分壓），不需外部分壓電阻；AP63203 FB 接 +3V3 已核對"
+ },
+ "assumptions": "外層 1oz（35µm）、溫升 ΔT=10°C、銅電阻 40°C",
+ "finding": "市電 1.5mm 走線在 1oz 銅、ΔT10°C 可過 3.21A，與保險絲 3.15A 相當、餘量≈0。負載 >3A 須改 2oz 銅（5.3A）並同步調整保險絲。"
+}

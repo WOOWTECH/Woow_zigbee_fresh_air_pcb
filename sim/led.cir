@@ -1,0 +1,20 @@
+* L1 藍光 LED（XL-1608UBC, LCSC C965807）由 PB0 經 R4 100Ω 驅動；規格書 Vf 2.8–3.6V@20mA（典型 3.0V）
+VGPIO gpio 0 DC 3.3
+R4 gpio a 100
+DL a 0 DBLUE
+R4b gpio b 100
+DLmax b 0 DBLUE_MIN
+R4c gpio c 100
+DLmin c 0 DBLUE_MAX
+* 參數校正到規格書 Vf=3.0V@20mA（IS 由 N=1.9、RS=8Ω 反推）
+.model DBLUE D(IS=1.6e-27 N=1.9 RS=8)
+.model DBLUE_MIN D(IS=1.1e-29 N=1.9 RS=8)
+.model DBLUE_MAX D(IS=3.2e-25 N=1.9 RS=8)
+.control
+run
+print i(VGPIO)
+op
+print v(a) v(b) v(c)
+print (3.3-v(a))/100 (3.3-v(b))/100 (3.3-v(c))/100
+.endc
+.end
