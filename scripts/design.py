@@ -24,10 +24,10 @@ def build(version="2.0"):
             {"1": "AC_L_IN", "2": "AC_N"})
         add("F1", "Device:Fuse", "T3.15A 250V", "Fuse:Fuseholder_TR5_Littelfuse_No560_No460", "",
             {"1": "AC_L_IN", "2": "AC_L"})
-        add("RV1", "Device:Varistor", "07D471K", "Varistor:RV_Disc_D7mm_W3.4mm_P5mm", "",
+        add("RV1", "Device:Varistor", "07D471K", "Varistor:RV_Disc_D7mm_W3.4mm_P5mm", "C28756",
             {"1": "AC_L", "2": "AC_N"})
-        add("U2", "Converter_ACDC:IRM-03-12", "IRM-03-12", "Converter_ACDC:Converter_ACDC_MeanWell_IRM-03-xx_THT", "",
-            {"1": "AC_L", "3": "AC_N", "5": None, "14": "GND", "16": "+12V"})
+        add("U2", "Converter_ACDC:IRM-02-12", "IRM-02-12", "Converter_ACDC:Converter_ACDC_MeanWell_IRM-02-xx_THT", "C7211213",
+            {"2": "AC_L", "1": "AC_N", "3": "GND", "4": "+12V"})
     else:
         add("P1", "Connector_Generic:Conn_01x02", "AC IN", "WOOW:TerminalBlock_Pluggable_1x02_P5.00mm_Horizontal", "",
             {"1": "AC_L", "2": "AC_N"})
@@ -41,9 +41,9 @@ def build(version="2.0"):
         add("U4", "Regulator_Switching:AP63203WU", "AP63203WU-7", "Package_TO_SOT_SMD:TSOT-23-6", "C780769",
             {"3": "+12V", "2": "+12V", "4": "GND", "5": "SW", "6": "BST", "1": "+3V3"})
         add("C12", "Device:C", "100nF", C0603, "C14663", {"1": "BST", "2": "SW"})
-        add("L2", "Device:L", "6.8uH", "Inductor_SMD:L_Sunlord_SWPA4030S", "", {"1": "SW", "2": "+3V3"})
-        add("C7", "Device:C", "22uF 10V", C0805, "C45783", {"1": "+3V3", "2": "GND"})
-        add("C13", "Device:C", "22uF 10V", C0805, "C45783", {"1": "+3V3", "2": "GND"})
+        add("L2", "Device:L", "3.9uH", "Inductor_SMD:L_Sunlord_SWPA4030S", "C96899", {"1": "SW", "2": "+3V3"})
+        add("C7", "Device:C", "22uF 25V", C0805, "C45783", {"1": "+3V3", "2": "GND"})
+        add("C13", "Device:C", "22uF 25V", C0805, "C45783", {"1": "+3V3", "2": "GND"})
         add("C14", "Device:C", "100nF", C0603, "C14663", {"1": "+12V", "2": "GND"})
     else:
         add("U4", "Regulator_Linear:AMS1117-3.3", "LM1117-3.3", "Package_TO_SOT_SMD:SOT-223-3_TabPin2", "C23984",
@@ -119,10 +119,11 @@ CHANGES = {
     "2.0": [
         "F1 慢斷保險絲 T3.15A 串在 AC_L 入口（同時保護 IRM 與 P3 pin1 供給 DO_COM 的風扇迴路）",
         "RV1 壓敏電阻 07D471K 跨 L-N（突波）",
-        "U2 IRM-02-12 (167mA) -> IRM-03-12 (250mA)：4 顆繼電器全吸 133mA + 3.3V 側仍有餘裕",
+        "電源預算：3.3V 改降壓後 12V 側只剩約 13mA，4 顆繼電器全吸 133mA，合計約 146mA < IRM-02-12 額定 167mA（保留原電源與位置）",
         "U4 LM1117 線性 -> AP63203WU 同步降壓：免散熱、陶瓷電容穩定、輸入耐 32V（IRM OVP 16.2V 也安全）",
         "ZS3L UART 接 STM32 USART1：TXD->PA10、RXD<-PA9；RST<-PB1 (10k 上拉)；指示燈改由 PB0 驅動",
         "NRST 電容 1uF -> 100nF；VDDA 加 1uF；BOOT0 加測試點 TP1",
+        "P1 市電輸入端子由板頂中央移到板底右側，與 P3 同側，所有市電集中在板底＋右緣走廊",
         "PCB：市電區與低壓區 >=6.4mm 隔離＋開槽、市電網路間 >=2.5mm、固定孔改非金屬化、鋪銅離板邊 0.5mm",
     ]
 }
