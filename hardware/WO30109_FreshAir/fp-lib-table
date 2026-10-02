@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "WOOW")(type "KiCad")(uri "${KIPRJMOD}/../lib/WOOW.pretty")(options "")(descr "WOOWTECH 自訂封裝（量測自原設計 V1.3）"))
+)

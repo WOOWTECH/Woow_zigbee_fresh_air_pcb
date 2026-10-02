@@ -1,0 +1,9 @@
+*.kicad_pro  text eol=lf
+*.kicad_sch  text eol=lf
+*.kicad_pcb  text eol=lf
+*.kicad_sym  text eol=lf
+*.kicad_mod  text eol=lf
+*.kicad_dru  text eol=lf
+*.zip   binary
+*.pdf   binary
+*.png   binary

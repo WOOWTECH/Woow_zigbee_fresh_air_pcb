@@ -1,0 +1,21 @@
+{
+  "meta": { "filename": "WO30109_FreshAir.kicad_pro", "version": 3 },
+  "board": { "design_settings": { "defaults": {}, "rules": {} } },
+  "net_settings": {
+    "classes": [
+      { "name": "Default", "clearance": 0.2, "track_width": 0.25, "via_diameter": 0.6, "via_drill": 0.3 },
+      { "name": "MAINS", "clearance": 2.5, "track_width": 2.0, "via_diameter": 0.6, "via_drill": 0.3 },
+      { "name": "POWER", "clearance": 0.2, "track_width": 0.6, "via_diameter": 0.8, "via_drill": 0.4 }
+    ],
+    "netclass_patterns": [
+      { "netclass": "MAINS", "pattern": "AC_*" },
+      { "netclass": "MAINS", "pattern": "DO_*" },
+      { "netclass": "POWER", "pattern": "+12V" },
+      { "netclass": "POWER", "pattern": "+3V3" },
+      { "netclass": "POWER", "pattern": "COIL*" },
+      { "netclass": "POWER", "pattern": "SW" }
+    ]
+  },
+  "sheets": [],
+  "text_variables": {}
+}

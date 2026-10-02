@@ -1,0 +1,23 @@
+# KiCad 產生的暫存／本機檔（不進版控）
+*-backups/
+*.kicad_prl
+*.lck
+~*.lck
+fp-info-cache
+*-cache.lib
+*.bak
+*.bck
+_autosave-*
+\#auto_saved_files#
+# 本機輸出（正式生產檔由 CI 產生並放 Release）
+output/
+*.dsn
+*.ses
+freerouting*.log
+# 機密：不得公開
+**/invoice*
+**/*請款*
+
+# Python
+__pycache__/
+*.pyc
