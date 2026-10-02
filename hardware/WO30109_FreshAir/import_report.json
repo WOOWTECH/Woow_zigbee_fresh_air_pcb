@@ -1,0 +1,229 @@
+{
+ "placed": {
+  "U1": {
+   "rot": 90,
+   "bottom": true,
+   "rms": 0.124
+  },
+  "U3": {
+   "rot": 0,
+   "bottom": false,
+   "rms": 0.0
+  },
+  "P3": {
+   "rot": 0,
+   "bottom": false,
+   "rms": 0.0
+  },
+  "RF1": {
+   "rot": 0,
+   "bottom": false,
+   "rms": 0.002
+  },
+  "K1": {
+   "rot": 270,
+   "bottom": false,
+   "rms": 0.0
+  },
+  "K2": {
+   "rot": 270,
+   "bottom": false,
+   "rms": 0.0
+  },
+  "K3": {
+   "rot": 270,
+   "bottom": false,
+   "rms": 0.0
+  },
+  "K4": {
+   "rot": 270,
+   "bottom": false,
+   "rms": 0.0
+  },
+  "U2": {
+   "rot": 180,
+   "bottom": false,
+   "rms": 0.0
+  },
+  "S1": {
+   "rot": 0,
+   "bottom": false,
+   "rms": 0.0
+  },
+  "P2": {
+   "rot": 180,
+   "bottom": false,
+   "rms": 0.0
+  },
+  "U4": {
+   "rot": 90,
+   "bottom": true,
+   "rms": 0.25
+  },
+  "Q1": {
+   "rot": 90,
+   "bottom": true,
+   "rms": 0.072
+  },
+  "Q2": {
+   "rot": 90,
+   "bottom": true,
+   "rms": 0.072
+  },
+  "Q3": {
+   "rot": 90,
+   "bottom": true,
+   "rms": 0.072
+  },
+  "Q4": {
+   "rot": 90,
+   "bottom": true,
+   "rms": 0.072
+  },
+  "P1": {
+   "rot": 0,
+   "bottom": false,
+   "rms": 0.0
+  },
+  "C6": {
+   "rot": 180,
+   "bottom": true,
+   "rms": 0.035
+  },
+  "C7": {
+   "rot": 0,
+   "bottom": true,
+   "rms": 0.035
+  },
+  "C1": {
+   "rot": 0,
+   "bottom": true,
+   "rms": 0.035
+  },
+  "C2": {
+   "rot": 0,
+   "bottom": true,
+   "rms": 0.035
+  },
+  "C3": {
+   "rot": 0,
+   "bottom": true,
+   "rms": 0.035
+  },
+  "C4": {
+   "rot": 180,
+   "bottom": true,
+   "rms": 0.035
+  },
+  "R1": {
+   "rot": 0,
+   "bottom": true,
+   "rms": 0.106
+  },
+  "C5": {
+   "rot": 270,
+   "bottom": true,
+   "rms": 0.035
+  },
+  "R2": {
+   "rot": 270,
+   "bottom": true,
+   "rms": 0.106
+  },
+  "R3": {
+   "rot": 180,
+   "bottom": true,
+   "rms": 0.106
+  },
+  "C8": {
+   "rot": 0,
+   "bottom": true,
+   "rms": 0.035
+  },
+  "C9": {
+   "rot": 0,
+   "bottom": true,
+   "rms": 0.035
+  },
+  "R4": {
+   "rot": 90,
+   "bottom": false,
+   "rms": 0.106
+  },
+  "L1": {
+   "rot": 270,
+   "bottom": false,
+   "rms": 0.053
+  },
+  "B1": {
+   "rot": 0,
+   "bottom": false,
+   "rms": 0.0
+  },
+  "R5": {
+   "rot": 0,
+   "bottom": true,
+   "rms": 0.106
+  },
+  "R9": {
+   "rot": 180,
+   "bottom": true,
+   "rms": 0.106
+  },
+  "D1": {
+   "rot": 180,
+   "bottom": true,
+   "rms": 0.174
+  },
+  "R6": {
+   "rot": 0,
+   "bottom": true,
+   "rms": 0.106
+  },
+  "R10": {
+   "rot": 180,
+   "bottom": true,
+   "rms": 0.106
+  },
+  "D2": {
+   "rot": 180,
+   "bottom": true,
+   "rms": 0.174
+  },
+  "R7": {
+   "rot": 0,
+   "bottom": true,
+   "rms": 0.106
+  },
+  "R11": {
+   "rot": 180,
+   "bottom": true,
+   "rms": 0.106
+  },
+  "D3": {
+   "rot": 180,
+   "bottom": true,
+   "rms": 0.174
+  },
+  "R8": {
+   "rot": 0,
+   "bottom": true,
+   "rms": 0.106
+  },
+  "R12": {
+   "rot": 180,
+   "bottom": true,
+   "rms": 0.106
+  },
+  "D4": {
+   "rot": 0,
+   "bottom": true,
+   "rms": 0.318
+  }
+ },
+ "unplaced": [],
+ "conflicts": [],
+ "tracks": 229,
+ "vias": 86,
+ "tracks_without_net": 0
+}

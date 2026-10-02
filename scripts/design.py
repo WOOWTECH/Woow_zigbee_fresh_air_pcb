@@ -90,7 +90,7 @@ def build(version="2.0"):
     # ---------------- 使用者介面 ----------------
     add("B1", "Switch:SW_Push", "ZX-QC66-4.3TP", "WOOW:SW_Push_6x6mm_SMD_ZX-QC66", "C7470150", {"1": "GND", "2": "Reset_Button"})
     add("S1", "Switch:SW_DIP_x02", "DIP 2P", "Button_Switch_SMD:SW_DIP_SPSTx02_Slide_Copal_CHS-02B_W7.62mm_P1.27mm", "C7421516",
-        {"1": "Mode_bit0", "2": "Mode_bit1", "3": "GND", "4": "GND"})
+        {"1": "Mode_bit1", "2": "Mode_bit0", "3": "GND", "4": "GND"})
     add("P2", "Connector_Generic:Conn_01x04", "SWD", "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical", "",
         {"1": "+3V3", "2": "SWCLK", "3": "SWDIO", "4": "GND"})
     add("RF1", "WOOW:EPA09-4D", "EPA09-4D", "WOOW:Ebelong_EPA09-4D", "",

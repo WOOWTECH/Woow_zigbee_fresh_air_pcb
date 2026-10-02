@@ -1,0 +1,16 @@
+(version 1)
+# 安規間距（IEC 60664-1 / 62368-1，230VAC、OVC II、汙染等級 2）
+# 市電 ↔ 低壓（SELV）：加強絕緣；繼電器 G5Q 本身線圈-接點設計值爬電 6.4mm，PCB 不得比它差
+(rule "mains_to_selv"
+	(condition "A.NetClass == 'MAINS' && B.NetClass != 'MAINS' && B.Type != 'Zone' && A.Type != 'Zone'")
+	(constraint clearance (min 6.4mm)))
+(rule "mains_to_selv_pour"
+	(condition "A.NetClass == 'MAINS' && B.Type == 'Zone' && B.NetClass != 'MAINS'")
+	(constraint clearance (min 6.4mm)))
+# 市電不同網路之間（L-N、各繼電器輸出）：功能絕緣
+(rule "mains_to_mains"
+	(condition "A.NetClass == 'MAINS' && B.NetClass == 'MAINS' && A.Net != B.Net")
+	(constraint clearance (min 2.5mm)))
+# 銅到板邊
+(rule "edge"
+	(constraint edge_clearance (min 0.5mm)))
