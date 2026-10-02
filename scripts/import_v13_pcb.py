@@ -202,6 +202,9 @@ def main():
               fp.SetReference(ref); fp.SetValue(part["value"])
               board.Add(fp)
           fp.SetField("LCSC", part["lcsc"] or "")
+          if ref in design.HOLES:                       # 固定孔：直接放原位
+              fp.SetPosition(V(*K(*design.HOLES[ref]))); report["placed"][ref] = dict(rot=0, bottom=False, rms=0)
+              continue
           if ref not in CP:
               report["unplaced"].append(ref); continue
           cx, cy, bottom = CP[ref]
@@ -263,12 +266,17 @@ def main():
         gn = gnet("F", x, y) or gnet("B", x, y)
         if gn in gmap: v.SetNet(N(gmap[gn]))
         board.Add(v); nv += 1
+    if VERSION.startswith("2"):
+        import upgrade_v20_pcb
+        info = upgrade_v20_pcb.apply(board, fps, P, SN, NF, load_fp)
+        report["v2"] = info
     # 鋪銅：兩面 GND（V1.3 原設計間隙 0.127mm；V2.0 由 .kicad_dru 規則決定退讓距離）
     zc = float(os.environ.get("ZONE_CLEARANCE", "0.127"))
     for layer in (pcbnew.F_Cu, pcbnew.B_Cu):
         z = pcbnew.ZONE(board); z.SetLayer(layer); z.SetNet(N("GND"))
         z.SetLocalClearance(MM(zc)); z.SetMinThickness(MM(0.127))
-        z.SetPadConnection(pcbnew.ZONE_CONNECTION_THERMAL)
+        z.SetPadConnection(pcbnew.ZONE_CONNECTION_FULL)
+        z.SetIslandRemovalMode(pcbnew.ISLAND_REMOVAL_MODE_ALWAYS)
         z.SetThermalReliefGap(MM(0.3)); z.SetThermalReliefSpokeWidth(MM(0.4))
         ol = z.Outline(); ol.NewOutline()
         for gx, gy in ((-31.45, 0.25), (31.45, 0.25), (31.45, 82.83), (-31.45, 82.83)):

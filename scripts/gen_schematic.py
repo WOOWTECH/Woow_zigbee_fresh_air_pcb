@@ -17,7 +17,7 @@ G = 2.54
 # 版面：各功能區塊在 A2 圖紙上的起點（mm）與每列寬度
 BLOCKS = [
     ("市電輸入／電源", ["P1", "F1", "RV1", "U2", "C6", "C14", "U4", "C12", "L2", "C7", "C13"], (25, 40)),
-    ("MCU", ["U1", "C1", "C2", "C3", "C4", "C10", "R1", "C5", "R2", "R3", "TP1", "P2"], (25, 140)),
+    ("MCU", ["U1", "C1", "C2", "C3", "C4", "C10", "R1", "C5", "R2", "R3", "TP1", "P2", "H1", "H2", "H3", "H4"], (25, 140)),
     ("Zigbee / RF / 介面", ["U3", "R13", "C8", "C9", "R4", "L1", "RF1", "B1", "S1"], (240, 40)),
     ("繼電器", [r for k in range(1, 5) for r in (f"R{4+k}", f"R{8+k}", f"Q{k}", f"D{k}", f"K{k}")] + ["P3"], (240, 170)),
 ]
@@ -50,6 +50,8 @@ def main():
             sch.components.add(lib_id=part["lib"], reference=ref, value=part["value"],
                                position=(snap(x + w / 2), snap(y + h / 2)), footprint=part["footprint"],
                                LCSC=part["lcsc"] or "")
+            if ref.startswith("H") or ref.startswith("TP"):   # 固定孔、測試點：不進 BOM（與 PCB 一致）
+                sch.components.get(ref).in_bom = False
             placed.add(ref)
             x += w + 8
             rowh = max(rowh, h)

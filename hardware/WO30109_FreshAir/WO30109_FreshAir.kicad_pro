@@ -57,6 +57,10 @@
       {
         "netclass": "POWER",
         "pattern": "/SW"
+      },
+      {
+        "netclass": "MAINS",
+        "pattern": "unconnected-(K*"
       }
     ]
   },

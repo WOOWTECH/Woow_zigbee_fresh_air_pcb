@@ -1,0 +1,49 @@
+# 每次 push / PR：跑 ERC、DRC（含安規規則）、產生生產檔（Gerber、鑽孔、座標、BOM、PDF）
+name: KiCad CI
+
+on:
+  push:
+    branches: [main, "rev/**"]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    container:
+      image: kicad/kicad:10.0
+      options: --user root          # 映像檔預設 user=kicad，寫不進 runner 暫存目錄
+    env:
+      PRJ: hardware/WO30109_FreshAir
+      NAME: WO30109_FreshAir
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: ERC（原理圖電氣規則）
+        run: |
+          mkdir -p out
+          kicad-cli sch erc --severity-error --exit-code-violations \
+            --format json -o out/erc.json $PRJ/$NAME.kicad_sch
+
+      - name: DRC（佈線規則＋市電安規 .kicad_dru）
+        run: |
+          kicad-cli pcb drc --schematic-parity --severity-error --exit-code-violations \
+            --format json -o out/drc.json $PRJ/$NAME.kicad_pcb
+
+      - name: 產生生產檔
+        if: always()
+        run: |
+          mkdir -p out/gerber
+          kicad-cli pcb export gerbers -o out/gerber/ $PRJ/$NAME.kicad_pcb
+          kicad-cli pcb export drill --format excellon -o out/gerber/ $PRJ/$NAME.kicad_pcb
+          kicad-cli pcb export pos --format csv --units mm --side both -o out/$NAME-pos.csv $PRJ/$NAME.kicad_pcb
+          kicad-cli sch export bom --fields "Reference,Value,Footprint,LCSC,\${QUANTITY}" \
+            --group-by Value,Footprint,LCSC -o out/$NAME-bom.csv $PRJ/$NAME.kicad_sch
+          kicad-cli sch export pdf -o out/$NAME-schematic.pdf $PRJ/$NAME.kicad_sch
+          python3 -c "import shutil; shutil.make_archive('out/$NAME-gerber', 'zip', 'out/gerber')"
+
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: production-${{ github.sha }}
+          path: out/
