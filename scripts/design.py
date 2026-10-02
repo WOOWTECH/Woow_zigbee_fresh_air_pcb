@@ -27,7 +27,7 @@ def build(version="2.0"):
         add("RV1", "Device:Varistor", "07D471K", "Varistor:RV_Disc_D7mm_W3.4mm_P5mm", "C28756",
             {"1": "AC_L", "2": "AC_N"})
         add("U2", "Converter_ACDC:IRM-02-12", "IRM-02-12", "Converter_ACDC:Converter_ACDC_MeanWell_IRM-02-xx_THT", "C7211213",
-            {"2": "AC_L", "1": "AC_N", "3": "GND", "4": "+12V"})
+            {"1": "AC_L", "2": "AC_N", "3": "GND", "4": "+12V"})  # L/N 對調：佈線需要，IRM 輸入不分極性
     else:
         add("P1", "Connector_Generic:Conn_01x02", "AC IN", "WOOW:TerminalBlock_Pluggable_1x02_P5.00mm_Horizontal", "",
             {"1": "AC_L", "2": "AC_N"})
@@ -104,13 +104,18 @@ def build(version="2.0"):
         add(f"Q{k}", "Transistor_FET:DMG2302U", "Si2302CDS", "Package_TO_SOT_SMD:SOT-23", "C5224182",
             {"1": f"G{k}", "2": "GND", "3": f"COIL{k}"})
         add(f"D{k}", "Diode:1N4148W", "1N4148W", "Diode_SMD:D_SOD-123", "C81598", {"1": "+12V", "2": f"COIL{k}"})
-        add(f"K{k}", "Relay:G5Q-1", "G5Q-1 DC12", "Relay_THT:Relay_SPDT_Omron-G5Q-1", "C397244",
+        add(f"K{k}", "Relay:G5Q-1", "G5Q-1 DC12", "WOOW:Relay_SPDT_Omron-G5Q-1_Tight", "C397244",
             {"1": "+12V", "5": f"COIL{k}", "2": "DO_COM", "3": f"DO_{k}_NO", "4": nc[k]})
     add("P3", "Connector_Generic:Conn_01x08", "AC OUT", "WOOW:TerminalBlock_Pluggable_1x08_P5.08mm_Horizontal", "",
         {"1": "AC_L", "2": "DO_COM", "3": "DO_4_NC", "4": "DO_4_NO", "5": "DO_3_NC", "6": "DO_3_NO",
          "7": "DO_2_NO", "8": "DO_1_NO"})
+    # ---------------- 固定孔（M3，非金屬化；位置照原板）----------------
+    for i in range(1, 5):
+        add(f"H{i}", "Mechanical:MountingHole", "M3", "MountingHole:MountingHole_3.2mm_M3", "", {})
     return P
 
+
+HOLES = {"H1": (-24.95, 16.53), "H2": (24.95, 66.56), "H3": (-24.95, 66.56), "H4": (24.95, 16.53)}
 
 MAINS = {"AC_L_IN", "AC_L", "AC_N", "DO_COM", "DO_1_NO", "DO_2_NO", "DO_3_NO", "DO_4_NO", "DO_3_NC", "DO_4_NC"}
 POWER_FLAGS = ["+12V", "+3V3", "GND", "AC_L", "AC_N", "AC_L_IN"]
@@ -123,7 +128,8 @@ CHANGES = {
         "U4 LM1117 線性 -> AP63203WU 同步降壓：免散熱、陶瓷電容穩定、輸入耐 32V（IRM OVP 16.2V 也安全）",
         "ZS3L UART 接 STM32 USART1：TXD->PA10、RXD<-PA9；RST<-PB1 (10k 上拉)；指示燈改由 PB0 驅動",
         "NRST 電容 1uF -> 100nF；VDDA 加 1uF；BOOT0 加測試點 TP1",
-        "P1 市電輸入端子由板頂中央移到板底右側，與 P3 同側，所有市電集中在板底＋右緣走廊",
-        "PCB：市電區與低壓區 >=6.4mm 隔離＋開槽、市電網路間 >=2.5mm、固定孔改非金屬化、鋪銅離板邊 0.5mm",
+        "P1/P3 端子與 4 個固定孔位置不變；市電走廊沿上緣＋右緣，IRM 的 AC 兩腳 L/N 對調以避開 K4 線圈",
+        "RF1、S1（改背面）、P2、繼電器驅動元件移出市電 6.4mm 安全帶",
+        "PCB：市電區與低壓區 >=6.4mm 隔離＋開槽、市電網路間 >=1.5mm、固定孔改非金屬化、鋪銅離板邊 0.5mm",
     ]
 }

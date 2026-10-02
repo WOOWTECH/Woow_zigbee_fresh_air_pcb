@@ -21,3 +21,7 @@ freerouting*.log
 # Python
 __pycache__/
 *.pyc
+
+# build_v20.sh 暫存
+*.kicad_pcb.pre_route
+*.kicad_pcb.best

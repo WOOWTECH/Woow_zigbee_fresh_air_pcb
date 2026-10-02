@@ -15,10 +15,15 @@
    "bottom": false,
    "rms": 0.0
   },
+  "U4": {
+   "rot": 270,
+   "bottom": true,
+   "rms": 0.913
+  },
   "RF1": {
    "rot": 0,
    "bottom": false,
-   "rms": 0.002
+   "rms": 0.0
   },
   "K1": {
    "rot": 270,
@@ -55,11 +60,6 @@
    "bottom": false,
    "rms": 0.0
   },
-  "U4": {
-   "rot": 90,
-   "bottom": true,
-   "rms": 0.25
-  },
   "Q1": {
    "rot": 90,
    "bottom": true,
@@ -81,7 +81,7 @@
    "rms": 0.072
   },
   "P1": {
-   "rot": 0,
+   "rot": 180,
    "bottom": false,
    "rms": 0.0
   },
@@ -93,7 +93,7 @@
   "C7": {
    "rot": 0,
    "bottom": true,
-   "rms": 0.035
+   "rms": 0.283
   },
   "C1": {
    "rot": 0,
@@ -219,10 +219,75 @@
    "rot": 0,
    "bottom": true,
    "rms": 0.318
+  },
+  "H1": {
+   "rot": 0,
+   "bottom": false,
+   "rms": 0
+  },
+  "H2": {
+   "rot": 0,
+   "bottom": false,
+   "rms": 0
+  },
+  "H3": {
+   "rot": 0,
+   "bottom": false,
+   "rms": 0
+  },
+  "H4": {
+   "rot": 0,
+   "bottom": false,
+   "rms": 0
   }
  },
- "unplaced": [],
- "conflicts": [],
+ "unplaced": [
+  "F1",
+  "RV1",
+  "C12",
+  "L2",
+  "C13",
+  "C14",
+  "C10",
+  "R13",
+  "TP1",
+  "F1",
+  "RV1",
+  "C12",
+  "L2",
+  "C13",
+  "C14",
+  "C10",
+  "R13",
+  "TP1"
+ ],
+ "conflicts": [
+  [
+   "+12V",
+   "GND"
+  ],
+  [
+   "LED",
+   "ZB_TX"
+  ],
+  [
+   "AC_L",
+   "AC_N"
+  ],
+  [
+   "AC_L",
+   "AC_L_IN"
+  ]
+ ],
+ "v2": {
+  "relay_x": {
+   "1": -16.01,
+   "2": -5.34,
+   "3": 5.33,
+   "4": 16.01
+  },
+  "coil_y": 34.78
+ },
  "tracks": 229,
  "vias": 86,
  "tracks_without_net": 0

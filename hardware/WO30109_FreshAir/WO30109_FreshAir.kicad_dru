@@ -7,10 +7,15 @@
 (rule "mains_to_selv_pour"
 	(condition "A.NetClass == 'MAINS' && B.Type == 'Zone' && B.NetClass != 'MAINS'")
 	(constraint clearance (min 6.4mm)))
-# 市電不同網路之間（L-N、各繼電器輸出）：功能絕緣
+# 市電不同網路之間（L-N、各繼電器輸出）：功能絕緣（IEC 60664-1 2.5kV 衝擊 → 間隙 1.5mm；G5Q 相鄰接點腳本身約 1.67mm）
 (rule "mains_to_mains"
 	(condition "A.NetClass == 'MAINS' && B.NetClass == 'MAINS' && A.Net != B.Net")
-	(constraint clearance (min 2.5mm)))
+	(constraint clearance (min 1.5mm)))
 # 銅到板邊
 (rule "edge"
 	(constraint edge_clearance (min 0.5mm)))
+# 固定孔（非金屬化）到市電銅箔：M3 螺絲頭半徑 2.75mm 比孔大 1.15mm，再留 1.15mm 餘量（H1 對 K1 繼電器腳 2.40mm，兩者位置都沿用原板）
+# 即使如此，固定孔仍須用尼龍螺絲／絕緣柱（市電對可觸及金屬需 6.4mm 加強絕緣）
+(rule "hole_to_mains"
+	(condition "A.Pad_Type == 'NPTH, mechanical' && B.NetClass == 'MAINS'")
+	(constraint hole_clearance (min 2.3mm)))
