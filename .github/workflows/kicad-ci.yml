@@ -10,12 +10,14 @@ on:
 jobs:
   check-and-build:
     runs-on: ubuntu-latest
-    container: kicad/kicad:10.0
+    container:
+      image: kicad/kicad:10.0
+      options: --user root          # 映像檔預設 user=kicad，寫不進 runner 暫存目錄
     env:
       PRJ: hardware/WO30109_FreshAir
       NAME: WO30109_FreshAir
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: ERC（原理圖電氣規則）
         run: |
@@ -38,9 +40,9 @@ jobs:
           kicad-cli sch export bom --fields "Reference,Value,Footprint,LCSC,\${QUANTITY}" \
             --group-by Value,Footprint,LCSC -o out/$NAME-bom.csv $PRJ/$NAME.kicad_sch
           kicad-cli sch export pdf -o out/$NAME-schematic.pdf $PRJ/$NAME.kicad_sch
-          cd out/gerber && zip -q ../$NAME-gerber.zip *
+          python3 -c "import shutil; shutil.make_archive('out/$NAME-gerber', 'zip', 'out/gerber')"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: production-${{ github.sha }}
