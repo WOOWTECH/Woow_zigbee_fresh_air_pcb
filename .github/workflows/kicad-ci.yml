@@ -11,7 +11,7 @@ jobs:
   check-and-build:
     runs-on: ubuntu-latest
     container:
-      image: kicad/kicad:10.0
+      image: kicad/kicad:10.0.6-full   # 與本機 KiCad 10.0.6 相同；-full 才有標準 3D 模型庫
       options: --user root          # 映像檔預設 user=kicad，寫不進 runner 暫存目錄
     env:
       PRJ: hardware/WO30109_FreshAir
