@@ -8,6 +8,7 @@
   EPA09-4D        6.0mm  無公開規格書（估計值）
   插拔端子座      9.0mm  5.08/5.00mm 直角公座本體（不含插頭；插頭插上約 +6mm）
   6×6 按鍵        4.3mm  ZX-QC66-4.3TP 型號即高度
+  ESP32-C6-WROOM-1 3.1mm Espressif 規格書 v1.4 Fig.10-1（18×25.5×3.1）
 """
 import json, os, sys
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
@@ -26,6 +27,7 @@ HEIGHT = {
     "TerminalBlock_Pluggable_1x02_P5.00mm_Horizontal": 9.0,
     "TerminalBlock_Pluggable_1x08_P5.08mm_Horizontal": 9.0,
     "SW_Push_6x6mm_SMD_ZX-QC66": 4.3,
+    "Espressif_ESP32-C6-WROOM-1": 3.1,
 }
 
 

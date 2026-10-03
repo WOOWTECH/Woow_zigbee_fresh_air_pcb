@@ -2,6 +2,30 @@
 
 格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號用 `硬體大版.小版`。
 
+## [3.0] — ESP32-C6 單晶片＋SYN480R（分支 `rev/v3.0`）
+
+把 Tuya ZS3L（JLC 無料）與 Ebelong EPA09-4D（無規格書、JLC 無料）換成 JLC 有庫存、可直接貼片的料，順便把 STM32 拿掉。
+
+### 電路
+- U1：STM32F103C8T6 ＋ U3 Tuya ZS3L → **ESP32-C6-WROOM-1-N8**（C5366877）。ESP32-C6 內建 IEEE 802.15.4，直接跑 Zigbee 3.0（ESP-Zigbee SDK），也有 Wi-Fi 6／BLE 5。ESP32-H2 模組在 JLC 全部 0 庫存，所以選 C6。
+- RF1：EPA09-4D（4 路已解碼模組）→ **U3 SYN480R**（C916347，JSMSEMI）＋Y1 13.52127MHz/20pF（C654957）＋LC 匹配（C15 6.8pF、C16 1.8pF、L3 27nH、L4 47nH），照規格書 433.92MHz 典型應用。SHUT 接地（常開）、SQ 經 R14 0R 接地（關靜噪，靈敏度多 3dB）。**遙控器解碼（EV1527/PT2262）改由 ESP32 韌體做**（RMT 或 GPIO 中斷量脈寬），可學習多支遙控器。
+- ANT1：433MHz 天線焊點（1/4 波長 17.3cm 導線或彈簧天線，手焊；JLC 無 433 天線庫存）。
+- 腳位：繼電器 IO6/IO7/IO0/IO1（避開 strapping 腳，閘極 10k 下拉保證開機時不吸合）、指撥 IO10/IO11、燈 IO2、433 資料 IO23、按鍵 IO9。
+- B1 改接 IO9（BOOT）：上電時按住＝進下載模式，平時當配對／重置鍵；R2 10k 上拉。IO8 加 R3 10k 上拉（下載模式需要 IO8=1）。EN 用 R1 10k／C5 1µF 延遲（Espressif 建議值）。
+- P2：SWD 1×4 → 燒錄座 2×3（3V3、GND、TXD0、RXD0、EN、BOOT），接 USB-UART 轉接板用 esptool 自動燒錄。1×6 直排會壓到 H3 固定孔，所以改 2×3。
+- 移除：C3、C4、C10、R13、TP1，與 ZS3L↔STM32 交握線 Input_1–4／Output_1–4。
+- 新增自訂符號 `ESP32-C6-WROOM-1`、`SYN480R`、`Crystal_4P`（`scripts/make_symbols.py`）與封裝 `Espressif_ESP32-C6-WROOM-1`（依規格書 v1.4 Fig.10-1，含天線下方兩層禁銅區）。
+
+### PCB
+- 市電區、繼電器、電源、端子、固定孔完全沿用 V2.0（`scripts/upgrade_v30_pcb.py` 從 git 標籤 `v2.0` 的 PCB 開始，**不需要原始 Gerber**）。
+- ESP32-C6 模組放在原 ZS3L 位置（左緣），天線端貼板邊、下方禁銅；SYN480R 放在原 RF1 位置，ANT 腳朝右，433 天線焊點遠離 ESP32 天線。
+- 一鍵重建：`scripts/build_v30.sh`。
+
+### ⚠️ 電源預算（要韌體配合）
+IRM-02-12 額定 12V 167mA。ESP32-C6 Zigbee 發射 +12dBm 峰值 185mA@3.3V，折合 12V 側約 58mA（降壓效率 88%）；4 顆繼電器全吸 133mA → 峰值約 192mA，**超過額定**。
+- 韌體：同時吸合的繼電器 ≤3 顆（多段速風扇本來就只會吸一檔＋閥），或 802.15.4 發射功率 ≤0dBm（117mA → 12V 側 37mA，合計 170mA，仍略超）。**不要開 Wi-Fi 發射**（+20dBm 峰值 382mA）。
+- 硬體根治：下一版改 IRM-03-12（250mA，C6640065），但封裝腳位完全不同，市電要重新佈線。
+
 ## [2.0.1] — 設計驗證
 
 - 完整驗證報告 `docs/verification/`：ERC/DRC/parity、SPICE（ngspice）、PCB 計算器（IPC-2221）、熱分析、EMC 預檢、3D／STEP、kicadiff、Jobset。
