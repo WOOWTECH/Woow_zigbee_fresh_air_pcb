@@ -26,6 +26,11 @@ IRM-02-12 額定 12V 167mA。ESP32-C6 Zigbee 發射 +12dBm 峰值 185mA@3.3V，�
 - 修正計算：路由器常態是**收訊** 73mA（12V 側 23mA），4 顆全吸持續 159mA 在額定內；超額的是發射峰值。韌體預設同時吸合 ≤3 顆、發射 +10dBm（峰值 158mA）、不啟動 Wi-Fi。
 - 硬體根治：下一版改 IRM-03-12（250mA，C6640065），但封裝腳位完全不同，市電要重新佈線。
 
+## [3.0.2] — JLC 下單檔
+
+- `scripts/make_jlc_files.py`：一次產出 JLC 的 Gerber＋鑽孔 zip、BOM、CPL（`output/jlc/`）。CPL 位置取焊盤中心、背面角度鏡射，旋轉修正用 matthewlai `cpl_rotations_db.csv`（與 kicad-jlcpcb-tools 相同比對規則）；沒有規則的自訂封裝（U1、K1–K4、B1）會列出來，下單時要在 JLC 預覽確認。
+- JLC API 預審：2 層、63.4×83.08mm、無紅／黃警示。
+
 ## [3.0.1] — V3.0 韌體與驗證
 
 - **韌體** `firmware/`（ESP-IDF v5.5.4＋esp-zigbee-lib v2）：Zigbee 3.0 路由器、4 個 On/Off 端點；指撥 4 種模式（4 路獨立／三段風速＋1／兩段風速＋2／4 路互斥）與先斷後通互鎖；同時吸合上限、線圈吸合錯開 50ms、發射 +10dBm；SYN480R 邊緣中斷＋EV1527 解碼、遙控器學習（NVS 存 8 支）；B1 短按風速循環、3 秒學習、10 秒恢復出廠；L1 狀態燈。

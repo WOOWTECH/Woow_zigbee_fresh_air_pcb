@@ -140,6 +140,8 @@ kicad-cli pcb drc --severity-error hardware/WO30109_FreshAir/WO30109_FreshAir.ki
 │   ├── route_v20.py               # Freerouting 低壓佈線 + 鋪銅
 │   ├── route_leftovers.py         # 補繞 Freerouting 沒繞通的線
 │   ├── build_v20.sh               # ★ 一鍵重建 V2.0 PCB
+│   ├── build_v30.sh               # ★ 一鍵重建 V3.0 PCB（從標籤 v2.0）
+│   ├── make_jlc_files.py          # ★ JLC 下單檔：Gerber zip、BOM、CPL（含 JLC 旋轉修正）
 │   ├── drc_summary.py             # DRC 結果摘要
 │   ├── add_stitching.py           # GND 縫合過孔
 │   ├── make_3d_models.py          # 自訂零件 3D 模型（STEP）
