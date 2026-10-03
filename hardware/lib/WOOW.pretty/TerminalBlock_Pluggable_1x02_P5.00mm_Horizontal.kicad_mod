@@ -11,4 +11,10 @@
 	(fp_rect (start -5.4 -8.4) (end 5.4 2.5) (stroke (width 0.05) (type solid)) (fill no) (layer "F.CrtYd") (uuid "20b093ee-d265-4fd3-a399-414f5cb47f51"))
 	(pad "1" thru_hole rect (at 2.5 0) (size 2.5 2.5) (drill 1.5) (layers "*.Cu" "*.Mask") (uuid "43b95388-9284-4e98-ac31-e8af065c2f05"))
 	(pad "2" thru_hole circle (at -2.5 0) (size 2.5 2.5) (drill 1.5) (layers "*.Cu" "*.Mask") (uuid "ffc5f73f-c157-4d2d-a3cf-528edcafa598"))
+
+	(model "${KIPRJMOD}/../lib/WOOW.3dshapes/TerminalBlock_Pluggable_1x02_P5.00mm_Horizontal.step"
+		(offset (xyz 0 0 0))
+		(scale (xyz 1 1 1))
+		(rotate (xyz 0 0 0))
+	)
 )

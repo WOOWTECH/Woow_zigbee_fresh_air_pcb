@@ -17,4 +17,10 @@
 	(pad "6" thru_hole circle (at -7.619999999999997 0) (size 2.3 2.3) (drill 1.5) (layers "*.Cu" "*.Mask") (uuid "bb74b612-5a99-46b8-9dc0-492be904cb24"))
 	(pad "7" thru_hole circle (at -12.7 0) (size 2.3 2.3) (drill 1.5) (layers "*.Cu" "*.Mask") (uuid "d65957ca-48f7-4126-83e5-2a28a946b07f"))
 	(pad "8" thru_hole circle (at -17.78 0) (size 2.3 2.3) (drill 1.5) (layers "*.Cu" "*.Mask") (uuid "3610f162-9cf1-4fc6-8f3b-41d3e5444865"))
+
+	(model "${KIPRJMOD}/../lib/WOOW.3dshapes/TerminalBlock_Pluggable_1x08_P5.08mm_Horizontal.step"
+		(offset (xyz 0 0 0))
+		(scale (xyz 1 1 1))
+		(rotate (xyz 0 0 0))
+	)
 )

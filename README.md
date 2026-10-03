@@ -8,7 +8,7 @@
 
 | 版本 | 狀態 | 說明 |
 |---|---|---|
-| `v1.3-baseline` | 參考用，**不可量產** | 原設計忠實重繪。市電與低壓 GND 只隔 0.127mm |
+| `v1.3` | 參考用，**不可量產** | 原設計忠實重繪（原理圖＋PCB）。市電與低壓 GND 只隔 0.127mm。（`v1.3-baseline` 只含原理圖） |
 | `v2.0` | **DRC 0 錯誤**（分支 `rev/v2.0`，待合併） | 市電隔離 ≥6.4mm、保險絲＋壓敏電阻、降壓電源、Zigbee 串口 |
 
 | 正面（零件面） | 背面 |
@@ -28,6 +28,7 @@
 - [怎麼改設計（範例）](#怎麼改設計範例)
 - [版本控制流程](#版本控制流程)
 - [自動檢查（CI）](#自動檢查ci)
+- [設計驗證報告](docs/verification/README.md)
 - [主要料件](#主要料件)
 - [已知限制與待辦](#已知限制與待辦)
 
@@ -121,10 +122,13 @@ kicad-cli pcb drc --severity-error hardware/WO30109_FreshAir/WO30109_FreshAir.ki
 │   │   ├── WO30109_FreshAir.kicad_sch   # 原理圖（由 scripts 產生）
 │   │   ├── WO30109_FreshAir.kicad_pcb   # PCB
 │   │   ├── WO30109_FreshAir.kicad_dru   # 安規 DRC 規則
+│   │   ├── WO30109_FreshAir.kicad_jobset # 一鍵產出（ERC/DRC/Gerber/BOM/STEP）
 │   │   └── sym-lib-table / fp-lib-table # 指向 ../lib 的專案庫
 │   └── lib/
 │       ├── WOOW.kicad_sym         # 自訂符號：ZS3L、EPA09-4D
-│       └── WOOW.pretty/           # 自訂封裝（焊盤量測自原板）
+│       ├── WOOW.pretty/           # 自訂封裝（焊盤量測自原板）
+│       └── WOOW.3dshapes/         # 自訂 3D 模型
+├── docs/verification/             # 設計驗證報告
 ├── scripts/
 │   ├── design.py                  # ★ 電路唯一來源：零件、腳位、網路、改版差異
 │   ├── gen_schematic.py           # design.py → .kicad_sch
@@ -135,7 +139,11 @@ kicad-cli pcb drc --severity-error hardware/WO30109_FreshAir/WO30109_FreshAir.ki
 │   ├── route_v20.py               # Freerouting 低壓佈線 + 鋪銅
 │   ├── route_leftovers.py         # 補繞 Freerouting 沒繞通的線
 │   ├── build_v20.sh               # ★ 一鍵重建 V2.0 PCB
-│   └── drc_summary.py             # DRC 結果摘要
+│   ├── drc_summary.py             # DRC 結果摘要
+│   ├── add_stitching.py           # GND 縫合過孔
+│   ├── make_3d_models.py          # 自訂零件 3D 模型（STEP）
+│   └── assign_3d.py               # 3D 模型掛到封裝
+├── sim/                           # SPICE 模擬（ngspice）
 ├── docs/review/                   # 設計審查報告
 ├── .github/workflows/kicad-ci.yml # 自動 ERC / DRC / 生產檔
 ├── CHANGELOG.md
@@ -166,7 +174,7 @@ git push -u origin fix/led-resistor && gh pr create
 
 ### 範例 2：在 KiCad 圖形介面裡用 Git
 
-KiCad 9 起專案管理器內建 Git（檔案樹會顯示修改狀態、可 commit / push / pull / 切分支）：
+KiCad 9 起專案管理器內建 Git（檔案樹會顯示修改狀態、可 commit / push / pull / 切分支）。KiCad 9.0.0 的 push/pull 帳密處理曾有回報問題，建議 commit 用 KiCad、push 用命令列或 `gh`：
 
 1. 用 KiCad 開 `hardware/WO30109_FreshAir/WO30109_FreshAir.kicad_pro`
 2. 左側檔案樹按右鍵 → **Git** → Commit / Push / Switch branch
@@ -199,8 +207,8 @@ Freerouting 每次結果不完全一樣；跑完一定看最後的 DRC 摘要，
 
 ```mermaid
 gitGraph
-    commit id: "V1.3 原理圖重繪"
-    commit id: "V1.3 PCB 轉入 + 安規規則" tag: "v1.3-baseline"
+    commit id: "V1.3 原理圖重繪" tag: "v1.3-baseline"
+    commit id: "V1.3 PCB 轉入 + 安規規則" tag: "v1.3"
     branch rev/v2.0
     checkout rev/v2.0
     commit id: "原理圖：保險絲/降壓/UART"
@@ -237,7 +245,31 @@ flowchart LR
     D --> E["Actions Artifacts<br/>下載送 JLC"]
 ```
 
-任何 ERC/DRC **錯誤**都會讓 CI 變紅燈，不能合併到 `main`。
+任何 ERC/DRC **錯誤**都會讓 CI 變紅燈，不能合併到 `main`。CI 也會跑 SPICE（繼電器關斷尖峰必須 < 20V）並輸出 STEP 3D 檔。
+
+本機一鍵產出（不需要 GitHub）：KiCad 專案管理器點 `WO30109_FreshAir.kicad_jobset`，或
+
+```bash
+cd hardware/WO30109_FreshAir && kicad-cli jobset run --file WO30109_FreshAir.kicad_jobset WO30109_FreshAir.kicad_pro
+```
+
+---
+
+## 設計驗證
+
+完整報告：**[docs/verification/README.md](docs/verification/README.md)**
+
+| 項目 | 結果 |
+|---|---|
+| ERC／DRC（含市電安規）／parity | 0／0／0 |
+| SPICE（ngspice） | 8 子電路全過；繼電器關斷尖峰 12.8V（拿掉續流二極體時 251V） |
+| PCB 計算器（IPC-2221） | ⚠️ 市電 1.5mm 線在 1oz 銅剛好等於保險絲 3.15A；>3A 負載請選 2oz 銅 |
+| 熱分析 | 最壞 2.6W；IRM-02 在此負載環境上限約 74°C |
+| EMC 預檢 | 風險分數 49/100，多數為市電隔離的刻意設計；量產前需實測預掃 |
+| 3D／STEP | 正面最高 16.9mm、背面 4.3mm；STEP 由 CI 產生 |
+| Jobset | 8/8 工作成功（KiCad 原生一鍵產出） |
+
+![3D](docs/verification/3d/render_iso.png)
 
 ---
 

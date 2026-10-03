@@ -408,15 +408,10 @@
 		(uuid "9a33a1c1-ec8b-40e6-b7fb-463ca84661d8")
 	)
 	(embedded_fonts no)
-	(model "${KICAD10_3DMODEL_DIR}/Relay_THT.3dshapes/Relay_SPDT_Omron-G5Q-1.step"
-		(offset
-			(xyz 0 0 0)
-		)
-		(scale
-			(xyz 1 1 1)
-		)
-		(rotate
-			(xyz 0 0 0)
-		)
+
+	(model "${KIPRJMOD}/../lib/WOOW.3dshapes/Relay_SPDT_Omron-G5Q-1_Tight.step"
+		(offset (xyz 0 0 0))
+		(scale (xyz 1 1 1))
+		(rotate (xyz 0 0 0))
 	)
 )

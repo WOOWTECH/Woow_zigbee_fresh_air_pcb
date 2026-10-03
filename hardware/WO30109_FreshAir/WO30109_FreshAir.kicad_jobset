@@ -1,0 +1,91 @@
+{
+  "jobs": [
+    {
+      "id": "2b85329d-4d17-4838-9b7a-314bc01ba4d6",
+      "type": "sch_erc",
+      "description": "ERC 原理圖檢查",
+      "settings": {
+        "fail_on_error": true,
+        "severity": 4
+      }
+    },
+    {
+      "id": "2a251a5f-2951-49b9-94bc-5c57315fd918",
+      "type": "pcb_drc",
+      "description": "DRC＋市電安規規則（parity 由 CI 另外檢查）",
+      "settings": {
+        "fail_on_error": true,
+        "parity": false,
+        "severity": 4
+      }
+    },
+    {
+      "id": "055813b9-823a-4319-98bf-5d94c93a4733",
+      "type": "pcb_export_gerbers",
+      "description": "Gerber",
+      "settings": {
+        "output_filename": "gerber/"
+      }
+    },
+    {
+      "id": "e0e29efa-b058-4800-9e27-10c0ac604abb",
+      "type": "pcb_export_drill",
+      "description": "鑽孔",
+      "settings": {
+        "output_filename": "gerber/"
+      }
+    },
+    {
+      "id": "40316ffd-1bfa-4f67-821a-df4efcd91ce2",
+      "type": "pcb_export_pos",
+      "description": "貼片座標",
+      "settings": {
+        "output_filename": "WO30109_FreshAir-pos.csv"
+      }
+    },
+    {
+      "id": "f42d8435-04f6-41db-b010-be7abd117a17",
+      "type": "sch_export_bom",
+      "description": "BOM",
+      "settings": {
+        "fields_ordered": [],
+        "output_filename": "WO30109_FreshAir-bom.csv"
+      }
+    },
+    {
+      "id": "91b5439f-561f-44d4-8176-49aa91980152",
+      "type": "sch_export_plot_pdf",
+      "description": "原理圖 PDF",
+      "settings": {
+        "output_filename": "WO30109_FreshAir-schematic.pdf"
+      }
+    },
+    {
+      "id": "9c88ecfb-be6b-4ef9-b97c-e10ab3298039",
+      "type": "pcb_export_3d",
+      "description": "STEP 3D（外殼設計用）",
+      "settings": {
+        "subst_models": true,
+        "output_filename": "WO30109_FreshAir.step",
+        "format": "step",
+        "export_components": true,
+        "export_tracks": true,
+        "overwrite": true
+      }
+    }
+  ],
+  "meta": {
+    "version": 1
+  },
+  "outputs": [
+    {
+      "id": "0a8808c2-96ac-4b3a-bdf5-a99d925074b8",
+      "type": "folder",
+      "description": "生產檔",
+      "only": [],
+      "settings": {
+        "output_path": "output/jobset"
+      }
+    }
+  ]
+}

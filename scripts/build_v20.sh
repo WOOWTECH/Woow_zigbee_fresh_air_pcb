@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# V2.0 PCB 一鍵重建：原 Gerber → V2.0 擺件與市電佈線 → Freerouting 低壓佈線 → 補線 → 鋪銅 → DRC
+# V2.0 PCB 一鍵重建：原 Gerber → V2.0 擺件與市電佈線 → Freerouting 低壓佈線 → 補線 → 鋪銅 → 縫合過孔 → 3D 模型 → DRC
 # 需求：KiCad 10（pcbnew python）、java 17、xvfb-run、Freerouting 1.9 jar、原始 Gerber（ORIG_GERBER，不公開）
 # Freerouting 對輸入很敏感（板子小改，結果可能差很多），所以依序試幾組輪數，第一組「全部接通」的就採用。
 set -euo pipefail
@@ -24,4 +24,13 @@ for passes in ${FR_PASSES_LIST:-40 25 60 80}; do
   [ "$n" -eq 0 ] && break
 done
 cp "$PCB.best" "$PCB"; rm -f "$PCB.pre_route" "$PCB.best"
+# GND 縫合過孔（3mm 格點＋訊號過孔旁），再清掉孔距過近的
+python3 scripts/route_v20.py fill
+python3 scripts/add_stitching.py 3.0
+python3 scripts/add_stitching.py --near-signal
+python3 scripts/route_v20.py fill
+python3 scripts/add_stitching.py --prune
+python3 scripts/route_v20.py fill
+# 3D 模型路徑（封裝重新產生後會被清掉）
+python3 scripts/assign_3d.py
 python3 scripts/drc_summary.py -v

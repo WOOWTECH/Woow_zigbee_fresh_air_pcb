@@ -11,7 +11,7 @@ jobs:
   check-and-build:
     runs-on: ubuntu-latest
     container:
-      image: kicad/kicad:10.0
+      image: kicad/kicad:10.0.6-full   # 與本機 KiCad 10.0.6 相同；-full 才有標準 3D 模型庫
       options: --user root          # 映像檔預設 user=kicad，寫不進 runner 暫存目錄
     env:
       PRJ: hardware/WO30109_FreshAir
@@ -40,7 +40,19 @@ jobs:
           kicad-cli sch export bom --fields "Reference,Value,Footprint,LCSC,\${QUANTITY}" \
             --group-by Value,Footprint,LCSC -o out/$NAME-bom.csv $PRJ/$NAME.kicad_sch
           kicad-cli sch export pdf -o out/$NAME-schematic.pdf $PRJ/$NAME.kicad_sch
+          kicad-cli pcb export step --subst-models -f -o out/$NAME.step $PRJ/$NAME.kicad_pcb
           python3 -c "import shutil; shutil.make_archive('out/$NAME-gerber', 'zip', 'out/gerber')"
+
+      - name: SPICE 模擬（繼電器驅動、LED）
+        if: always()
+        run: |
+          apt-get update -qq && apt-get install -y -qq ngspice > /dev/null
+          cd sim
+          ngspice -b relay_driver.cir | tee ../out/spice_relay.txt | grep -iE "^(icoil_on|vg_on|vds_on|vds_peak|id1_peak|t_decay)"
+          ngspice -b relay_no_diode.cir | grep -iE "^vds_peak" | tee -a ../out/spice_relay.txt
+          ngspice -b led.cir | tee ../out/spice_led.txt | grep -E "^\(3.3"
+          # 守門：有續流二極體時 Vds 峰值必須 < Si2302 耐壓 20V
+          python3 -c "import re,sys; v=float(re.search(r'vds_peak\s*=\s*([0-9.e+-]+)',open('../out/spice_relay.txt').read()).group(1)); print('Vds peak',v); sys.exit(0 if v<20 else 1)"
 
       - uses: actions/upload-artifact@v5
         if: always()

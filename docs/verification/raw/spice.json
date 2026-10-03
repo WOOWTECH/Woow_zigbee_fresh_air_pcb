@@ -1,0 +1,224 @@
+{
+  "analyzer_type": "spice",
+  "schema_version": "1.4.0",
+  "summary": {
+    "total": 8,
+    "total_findings": 0,
+    "pass": 8,
+    "warn": 0,
+    "fail": 0,
+    "skip": 0,
+    "by_severity": {
+      "error": 0,
+      "warning": 0,
+      "info": 8
+    }
+  },
+  "findings": [],
+  "simulation_results": [
+    {
+      "subcircuit_type": "rc_filter",
+      "components": [
+        "R1",
+        "C5"
+      ],
+      "filter_type": "low-pass",
+      "expected": {
+        "cutoff_hz": 159.15,
+        "type": "low-pass"
+      },
+      "simulated": {
+        "cutoff_hz": 158.778,
+        "phase_at_fc_deg": -0.784179
+      },
+      "delta": {
+        "fc_error_pct": 0.23
+      },
+      "status": "pass",
+      "cir_file": "<tmp>",
+      "log_file": "<tmp>",
+      "elapsed_s": 0.01,
+      "reference": "R1/C5"
+    },
+    {
+      "subcircuit_type": "transistor_circuit",
+      "components": [
+        "Q1"
+      ],
+      "transistor_type": "mosfet",
+      "value": "Si2302CDS",
+      "expected": {},
+      "simulated": {
+        "vth_V": 1.542,
+        "i_on_mA": 3.3
+      },
+      "delta": {},
+      "model_note": "generic NMOS model \u2014 real threshold depends on part",
+      "status": "pass",
+      "cir_file": "<tmp>",
+      "log_file": "<tmp>",
+      "elapsed_s": 0.012,
+      "reference": "Q1"
+    },
+    {
+      "subcircuit_type": "transistor_circuit",
+      "components": [
+        "Q2"
+      ],
+      "transistor_type": "mosfet",
+      "value": "Si2302CDS",
+      "expected": {},
+      "simulated": {
+        "vth_V": 1.542,
+        "i_on_mA": 3.3
+      },
+      "delta": {},
+      "model_note": "generic NMOS model \u2014 real threshold depends on part",
+      "status": "pass",
+      "cir_file": "<tmp>",
+      "log_file": "<tmp>",
+      "elapsed_s": 0.01,
+      "reference": "Q2"
+    },
+    {
+      "subcircuit_type": "transistor_circuit",
+      "components": [
+        "Q3"
+      ],
+      "transistor_type": "mosfet",
+      "value": "Si2302CDS",
+      "expected": {},
+      "simulated": {
+        "vth_V": 1.542,
+        "i_on_mA": 3.3
+      },
+      "delta": {},
+      "model_note": "generic NMOS model \u2014 real threshold depends on part",
+      "status": "pass",
+      "cir_file": "<tmp>",
+      "log_file": "<tmp>",
+      "elapsed_s": 0.011,
+      "reference": "Q3"
+    },
+    {
+      "subcircuit_type": "transistor_circuit",
+      "components": [
+        "Q4"
+      ],
+      "transistor_type": "mosfet",
+      "value": "Si2302CDS",
+      "expected": {},
+      "simulated": {
+        "vth_V": 1.542,
+        "i_on_mA": 3.3
+      },
+      "delta": {},
+      "model_note": "generic NMOS model \u2014 real threshold depends on part",
+      "status": "pass",
+      "cir_file": "<tmp>",
+      "log_file": "<tmp>",
+      "elapsed_s": 0.01,
+      "reference": "Q4"
+    },
+    {
+      "subcircuit_type": "decoupling",
+      "components": [
+        "C7",
+        "C13",
+        "C1",
+        "C2",
+        "C3"
+      ],
+      "rail": "+3V3",
+      "cap_count": 9,
+      "expected": {},
+      "simulated": {
+        "z_min_ohms": 0.0045,
+        "z_at_1MHz_ohms": 0.0046,
+        "z_at_100kHz_ohms": 0.0288
+      },
+      "delta": {},
+      "model_note": "generic ESR + parasitic L from self-resonant frequency",
+      "status": "pass",
+      "note": "Z=0.005\u03a9 at 1MHz",
+      "cir_file": "<tmp>",
+      "log_file": "<tmp>",
+      "elapsed_s": 0.016,
+      "reference": "C7/C13/C1/C2/C3"
+    },
+    {
+      "subcircuit_type": "decoupling",
+      "components": [
+        "C6",
+        "C14"
+      ],
+      "rail": "+12V",
+      "cap_count": 2,
+      "expected": {},
+      "simulated": {
+        "z_min_ohms": 0.0312,
+        "f_at_zmin_hz": 1949810.0,
+        "z_at_1MHz_ohms": 0.0333,
+        "z_at_100kHz_ohms": 0.1602
+      },
+      "delta": {},
+      "model_note": "generic ESR + parasitic L from self-resonant frequency",
+      "status": "pass",
+      "note": "Z=0.033\u03a9 at 1MHz",
+      "cir_file": "<tmp>",
+      "log_file": "<tmp>",
+      "elapsed_s": 0.014,
+      "reference": "C6/C14"
+    },
+    {
+      "subcircuit_type": "inrush",
+      "components": [
+        "C7",
+        "C13",
+        "C1",
+        "C2",
+        "C3"
+      ],
+      "regulator": "U4",
+      "expected": {
+        "v_target_V": 3.3,
+        "estimated_inrush_A": 0.183
+      },
+      "simulated": {
+        "v_settled_V": 3.3
+      },
+      "delta": {
+        "v_settle_error_pct": 0.0
+      },
+      "status": "pass",
+      "note": "Transient simulated",
+      "cir_file": "<tmp>",
+      "log_file": "<tmp>",
+      "elapsed_s": 0.016,
+      "reference": "C7/C13/C1/C2/C3"
+    }
+  ],
+  "trust_summary": {
+    "total_findings": 0,
+    "trust_level": "high",
+    "by_confidence": {
+      "deterministic": 0,
+      "heuristic": 0,
+      "datasheet_backed": 0
+    },
+    "by_evidence_source": {
+      "datasheet": 0,
+      "topology": 0,
+      "heuristic_rule": 0,
+      "symbol_footprint": 0,
+      "bom": 0,
+      "geometry": 0,
+      "api_lookup": 0
+    },
+    "provenance_coverage_pct": null
+  },
+  "workdir": "<tmp>",
+  "total_elapsed_s": 0.099,
+  "simulator": "~/.local/bin/ngspice",
+  "ngspice": "~/.local/bin/ngspice"
+}

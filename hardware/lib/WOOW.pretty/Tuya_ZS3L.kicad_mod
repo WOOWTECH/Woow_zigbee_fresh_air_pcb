@@ -26,4 +26,10 @@
 	(pad "14" smd rect (at -3 -7.425) (size 1.0 2.1) (layers "F.Cu" "F.Paste" "F.Mask") (uuid "57395078-d08f-4576-873d-349d6b0a71f9"))
 	(pad "15" smd rect (at -5 -7.425) (size 1.0 2.1) (layers "F.Cu" "F.Paste" "F.Mask") (uuid "2f74260a-35d7-44f0-bf4b-abade0fd49a0"))
 	(pad "16" smd rect (at -7 -7.425) (size 1.0 2.1) (layers "F.Cu" "F.Paste" "F.Mask") (uuid "36b96b56-4fd0-4ff0-9254-a3be0708a0fc"))
+
+	(model "${KIPRJMOD}/../lib/WOOW.3dshapes/Tuya_ZS3L.step"
+		(offset (xyz 0 0 0))
+		(scale (xyz 1 1 1))
+		(rotate (xyz 0 0 0))
+	)
 )

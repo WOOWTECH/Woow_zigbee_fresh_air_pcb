@@ -13,4 +13,10 @@
 	(pad "1" smd rect (at 4.25 -2.25) (size 2.1 1.4) (layers "F.Cu" "F.Paste" "F.Mask") (uuid "68dc5ef8-a835-44d8-bf43-7eaf1c1f1729"))
 	(pad "2" smd rect (at -4.25 2.25) (size 2.1 1.4) (layers "F.Cu" "F.Paste" "F.Mask") (uuid "b43acc0c-2f69-4123-8164-c4c37a9a0df6"))
 	(pad "2" smd rect (at 4.25 2.25) (size 2.1 1.4) (layers "F.Cu" "F.Paste" "F.Mask") (uuid "9dbd454c-c029-4e7d-aec6-38983bb0da7e"))
+
+	(model "${KIPRJMOD}/../lib/WOOW.3dshapes/SW_Push_6x6mm_SMD_ZX-QC66.step"
+		(offset (xyz 0 0 0))
+		(scale (xyz 1 1 1))
+		(rotate (xyz 0 0 0))
+	)
 )
