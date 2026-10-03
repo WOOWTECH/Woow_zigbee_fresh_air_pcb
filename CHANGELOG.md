@@ -2,7 +2,7 @@
 
 格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號用 `硬體大版.小版`。
 
-## [3.0] — ESP32-C6 單晶片＋SYN480R（分支 `rev/v3.0`）
+## [3.0] — ESP32-C6 單晶片＋SYN480R
 
 把 Tuya ZS3L（JLC 無料）與 Ebelong EPA09-4D（無規格書、JLC 無料）換成 JLC 有庫存、可直接貼片的料，順便把 STM32 拿掉。
 
