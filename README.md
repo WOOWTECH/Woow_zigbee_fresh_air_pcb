@@ -258,7 +258,7 @@ cd hardware/WO30109_FreshAir && kicad-cli jobset run --file WO30109_FreshAir.kic
 
 ## 設計驗證
 
-完整報告：**[docs/verification/README.md](docs/verification/README.md)**
+完整報告：**[V3.0](docs/verification/V3.0.md)**（ESP32-C6＋SYN480R，含電源預算、433 匹配模擬）／[V2.0](docs/verification/README.md)
 
 | 項目 | 結果 |
 |---|---|
@@ -294,12 +294,12 @@ cd hardware/WO30109_FreshAir && kicad-cli jobset run --file WO30109_FreshAir.kic
 
 ## 已知限制與待辦
 
-- **V3.0 電源預算**：IRM-02-12 額定 167mA；4 顆繼電器全吸（133mA）＋ESP32-C6 Zigbee +12dBm 發射峰值（12V 側約 58mA）≈ 192mA，超額。韌體要限制同時吸合 ≤3 顆，且**不開 Wi-Fi 發射**；根治要改 IRM-03-12（封裝不同，市電要重佈）。
+- **V3.0 電源預算**：IRM-02-12 額定 167mA。韌體預設同時吸合 ≤3 顆、Zigbee 發射 +10dBm、不啟動 Wi-Fi → 峰值約 158mA，在額定內；4 顆全吸時發射峰值約 191mA，超過 110% 保護點。根治要改 IRM-03-12（封裝不同，市電要重佈）。計算見 [V3.0 驗證報告](docs/verification/V3.0.md#6-電源預算)。
 - **V3.0 433MHz**：SYN480R 只輸出解調後的原始波形，遙控器編碼（EV1527／PT2262）要在 ESP32 韌體解；匹配元件值照規格書典型應用，實際天線長度與匹配要打樣後用遙控器實測距離微調。
 - **V3.0 ESP32 天線**：模組天線端貼左板邊、下方兩層禁銅；外殼若是金屬或天線端靠近金屬，Zigbee 距離會明顯縮短，必要時改外接天線版 ESP32-C6-WROOM-1U（腳位相同、本體短 6.3mm；2026-10-03 查 JLC 0 庫存，要客供）。
 - **繼電器負載**：G5Q-1 在 250VAC 只有 NO 5A／NC 3A，沒有馬達額定；多段速風扇要在韌體互鎖，避免兩檔同時吸合。
 - **固定孔一律用尼龍螺絲／絕緣支柱**：V2.0 孔邊到市電銅箔 2.4–2.9mm（DRC 規則 `hole_to_mains` ≥ 2.3mm），足夠避開螺絲頭，但達不到市電對可觸及金屬的 6.4mm，所以不能用金屬螺絲接金屬外殼。
-- **韌體**：V3.0 全部重寫在 ESP32-C6（ESP-IDF＋ESP-Zigbee SDK）：Zigbee 裝置類型、繼電器互鎖、433 解碼與學習、指撥模式。燒錄：P2 接 USB-UART（TX/RX/EN/BOOT），`esptool` 自動進下載模式；或上電時按住 B1。
+- **韌體**：V3.0 韌體在 [`firmware/`](firmware/README.md)（ESP-IDF v5.5.4＋esp-zigbee-lib v2）：Zigbee 路由器 4 個開關端點、指撥 4 種模式與風速互鎖、EV1527 遙控器學習、按鍵／燈號。主機端單元測試與完整編譯都在 CI。實際入網與遙控器相容性要打樣後驗證。
 - 原始 Altium 檔、Gerber、請款單等外包資料**不公開**，不在本 repo。
 
 ---
