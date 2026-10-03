@@ -10,7 +10,7 @@
 |---|---|---|
 | `v1.3` | 參考用，**不可量產** | 原設計忠實重繪（原理圖＋PCB）。市電與低壓 GND 只隔 0.127mm。（`v1.3-baseline` 只含原理圖） |
 | `v2.0` | **DRC 0 錯誤**（已合併 `main`） | 市電隔離 ≥6.4mm、保險絲＋壓敏電阻、降壓電源、Zigbee 串口 |
-| `v3.0` | 分支 `rev/v3.0`（PR 審查中） | ESP32-C6 單晶片 Zigbee＋SYN480R 433MHz，全部主料 JLC 可貼；市電區沿用 V2.0。見 [CHANGELOG](CHANGELOG.md#30--esp32-c6-單晶片syn480r分支-revv30) |
+| `v3.0` | **目前版本**（ERC/DRC 0；韌體 CI 綠燈），**待打樣實測** | ESP32-C6 單晶片 Zigbee＋SYN480R 433MHz，全部主料 JLC 可貼；市電區沿用 V2.0。見 [CHANGELOG](CHANGELOG.md#30--esp32-c6-單晶片syn480r) |
 
 | V3.0 正面（零件面） | V3.0 背面 |
 |---|---|
