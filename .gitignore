@@ -28,3 +28,9 @@ __pycache__/
 
 # SPICE 波形資料（由 sim/*.cir 產生）
 sim/*.csv
+# 韌體建置產物
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/managed_components/
+firmware/test/test_core

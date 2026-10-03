@@ -1,0 +1,27 @@
+* SYN480R 433.92MHz 輸入匹配（規格書典型應用值）：天線 → C16∥L3 → C15 串 → L4∥晶片輸入
+* 晶片輸入阻抗規格書未給，用 R_in ∥ C_in 掃三組（1.0/2.0/3.0pF）看峰值頻率落點
+.param cin=2p
+Vs src 0 AC 1
+Rs src ant 50
+C16 ant 0 1.8p
+L3 ant 0 27n
+C15 ant in 6.8p
+L4 in 0 47n
+Rin in 0 1k
+Cin in 0 {cin}
+Cpad in 0 0.3p
+.control
+set noaskquit
+foreach c 1.0p 2.0p 3.0p
+  alterparam cin = $c
+  reset
+  ac lin 2001 200meg 700meg
+  let g = db(abs(v(in))/0.5)
+  meas ac fpeak WHEN deriv(g)=0 FALL=1
+  meas ac gpeak MAX g
+  meas ac g433 FIND g AT=433.92meg
+  meas ac g315 FIND g AT=315meg
+  echo "cin=$c"
+end
+.endc
+.end

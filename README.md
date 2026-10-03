@@ -2,20 +2,21 @@
 
 [![KiCad CI](https://github.com/WOOWTECH/Woow_zigbee_fresh_air_pcb/actions/workflows/kicad-ci.yml/badge.svg)](https://github.com/WOOWTECH/Woow_zigbee_fresh_air_pcb/actions/workflows/kicad-ci.yml)
 
-220V 供電、4 路繼電器輸出的 Zigbee 新風（換氣扇）控制板。STM32F103 做控制，Tuya ZS3L 負責 Zigbee 連網，另外接一顆 433MHz 遙控接收模組。
+220V 供電、4 路繼電器輸出的 Zigbee 新風（換氣扇）控制板。V3.0 起由一顆 **ESP32-C6** 同時負責 Zigbee 3.0 連網與控制，433MHz 遙控由 **SYN480R** 接收、ESP32 解碼（V2.0 以前是 STM32F103＋Tuya ZS3L＋EPA09-4D 模組）。
 
 這個 repo 是把原設計 **V1.3**（Altium，外包設計）完整轉成 **KiCad 10**，用 git 做版控，並在 **V2.0** 修掉安規問題。
 
 | 版本 | 狀態 | 說明 |
 |---|---|---|
 | `v1.3` | 參考用，**不可量產** | 原設計忠實重繪（原理圖＋PCB）。市電與低壓 GND 只隔 0.127mm。（`v1.3-baseline` 只含原理圖） |
-| `v2.0` | **DRC 0 錯誤**（分支 `rev/v2.0`，待合併） | 市電隔離 ≥6.4mm、保險絲＋壓敏電阻、降壓電源、Zigbee 串口 |
+| `v2.0` | **DRC 0 錯誤**（已合併 `main`） | 市電隔離 ≥6.4mm、保險絲＋壓敏電阻、降壓電源、Zigbee 串口 |
+| `v3.0` | 分支 `rev/v3.0`（PR 審查中） | ESP32-C6 單晶片 Zigbee＋SYN480R 433MHz，全部主料 JLC 可貼；市電區沿用 V2.0。見 [CHANGELOG](CHANGELOG.md#30--esp32-c6-單晶片syn480r分支-revv30) |
 
-| 正面（零件面） | 背面 |
+| V3.0 正面（零件面） | V3.0 背面 |
 |---|---|
-| ![PCB V2.0 正面](docs/images/pcb_v2.0_top.png) | ![PCB V2.0 背面](docs/images/pcb_v2.0_bottom.png) |
+| ![PCB V3.0 正面](docs/images/pcb_v3.0_top.png) | ![PCB V3.0 背面](docs/images/pcb_v3.0_bottom.png) |
 
-背面圖中藍色是 GND 鋪銅，白色帶是市電周圍 6.4mm 的安全帶（DRC 規則自動退讓）。完整原理圖：[docs/images/schematic_v2.0.png](docs/images/schematic_v2.0.png)
+背面圖中藍色是 GND 鋪銅，白色帶是市電周圍 6.4mm 的安全帶（DRC 規則自動退讓）。完整原理圖：[V3.0](docs/images/schematic_v3.0.png)／[V2.0](docs/images/schematic_v2.0.png)。V3.0 左緣是 ESP32-C6 模組（天線端下方禁銅），左上是 SYN480R 433MHz 接收。
 
 ---
 
@@ -36,6 +37,8 @@
 
 ## 電路架構
 
+（V3.0；V2.0 以前低壓區是 STM32F103＋Tuya ZS3L＋EPA09-4D）
+
 ```mermaid
 flowchart LR
     subgraph MAINS["⚡ 市電區（230VAC）"]
@@ -48,14 +51,12 @@ flowchart LR
     subgraph SELV["🔋 低壓區（12V / 3.3V）"]
         IRM -->|"+12V"| BUCK["U4 AP63203<br/>12V→3.3V 降壓"]
         IRM -->|"+12V"| COIL["繼電器線圈<br/>Q1–Q4 Si2302 驅動"]
-        BUCK -->|"+3V3"| MCU["U1 STM32F103C8T6"]
-        BUCK --> ZB["U3 Tuya ZS3L<br/>Zigbee 3.0"]
-        BUCK --> RF["RF1 EPA09-4D<br/>433MHz 遙控"]
-        MCU <-->|"UART PA9/PA10"| ZB
-        MCU <-->|"4 進 4 出 GPIO"| ZB
-        RF -->|"RF_1–4"| MCU
-        MCU -->|"Relay_1–4"| COIL
-        UI["B1 按鍵 / S1 指撥 / L1 燈 / P2 SWD"] --- MCU
+        BUCK -->|"+3V3"| MCU["U1 ESP32-C6-WROOM-1<br/>Zigbee 3.0＋控制（V3.0）"]
+        BUCK --> RF["U3 SYN480R<br/>433MHz ASK 接收"]
+        ANT["ANT1 17.3cm 天線"] --> RF
+        RF -->|"RF_DATA → IO23<br/>韌體解 EV1527"| MCU
+        MCU -->|"Relay_1–4（IO6/7/0/1）"| COIL
+        UI["B1 按鍵(IO9 BOOT) / S1 指撥 / L1 燈 / P2 燒錄座"] --- MCU
     end
     COIL -.->|"線圈-接點 加強絕緣"| K
 ```
@@ -257,7 +258,7 @@ cd hardware/WO30109_FreshAir && kicad-cli jobset run --file WO30109_FreshAir.kic
 
 ## 設計驗證
 
-完整報告：**[docs/verification/README.md](docs/verification/README.md)**
+完整報告：**[V3.0](docs/verification/V3.0.md)**（ESP32-C6＋SYN480R，含電源預算、433 匹配模擬）／[V2.0](docs/verification/README.md)
 
 | 項目 | 結果 |
 |---|---|
@@ -277,15 +278,15 @@ cd hardware/WO30109_FreshAir && kicad-cli jobset run --file WO30109_FreshAir.kic
 
 | 位號 | 料件 | LCSC | 備註 |
 |---|---|---|---|
-| U1 | STM32F103C8T6 | C8734 | |
+| U1 | ESP32-C6-WROOM-1-N8（V3.0） | C5366877 | Zigbee 3.0／Wi-Fi 6／BLE 5，PCB 天線（V2.0：STM32F103C8T6 C8734） |
 | U2 | MEAN WELL IRM-02-12 | C7211213 | 230VAC→12V 2W |
-| U3 | Tuya ZS3L | — | JLC 無庫存，手焊或客供 |
+| U3 | SYN480R（V3.0） | C916347 | 433.92MHz ASK 接收；Y1 13.52127MHz C654957（V2.0：Tuya ZS3L，JLC 無料） |
 | U4 | AP63203WU-7（V2.0） | C780769 | 12V→3.3V 降壓 |
 | L2 | SWPA4030S3R9MT 3.9µH（V2.0） | C96899 | 規格書 Table 2 建議值 |
 | K1–K4 | Omron G5Q-1 DC12 | C397244 | 250VAC：NO 5A、NC 3A |
 | F1 | 保險絲 T3.15A 250V（V2.0） | — | TR5 座，手焊 |
 | RV1 | 07D471K（V2.0） | C28756 | |
-| RF1 | Ebelong EPA09-4D | — | 433MHz，規格書未公開 |
+| ANT1 | 433MHz 1/4 波長天線（V3.0） | — | 17.3cm 導線或彈簧天線，手焊（V2.0：RF1 EPA09-4D，規格書未公開） |
 
 完整 BOM 由 CI 產生（`*-bom.csv`）。
 
@@ -293,10 +294,12 @@ cd hardware/WO30109_FreshAir && kicad-cli jobset run --file WO30109_FreshAir.kic
 
 ## 已知限制與待辦
 
-- **EPA09-4D** 查不到公開規格書：3.3V 能否工作、編碼方式、外框尺寸都要跟供應商確認（封裝外框標為 UNVERIFIED）。
+- **V3.0 電源預算**：IRM-02-12 額定 167mA。韌體預設同時吸合 ≤3 顆、Zigbee 發射 +10dBm、不啟動 Wi-Fi → 峰值約 158mA，在額定內；4 顆全吸時發射峰值約 191mA，超過 110% 保護點。根治要改 IRM-03-12（封裝不同，市電要重佈）。計算見 [V3.0 驗證報告](docs/verification/V3.0.md#6-電源預算)。
+- **V3.0 433MHz**：SYN480R 只輸出解調後的原始波形，遙控器編碼（EV1527／PT2262）要在 ESP32 韌體解；匹配元件值照規格書典型應用，實際天線長度與匹配要打樣後用遙控器實測距離微調。
+- **V3.0 ESP32 天線**：模組天線端貼左板邊、下方兩層禁銅；外殼若是金屬或天線端靠近金屬，Zigbee 距離會明顯縮短，必要時改外接天線版 ESP32-C6-WROOM-1U（腳位相同、本體短 6.3mm；2026-10-03 查 JLC 0 庫存，要客供）。
 - **繼電器負載**：G5Q-1 在 250VAC 只有 NO 5A／NC 3A，沒有馬達額定；多段速風扇要在韌體互鎖，避免兩檔同時吸合。
 - **固定孔一律用尼龍螺絲／絕緣支柱**：V2.0 孔邊到市電銅箔 2.4–2.9mm（DRC 規則 `hole_to_mains` ≥ 2.3mm），足夠避開螺絲頭，但達不到市電對可觸及金屬的 6.4mm，所以不能用金屬螺絲接金屬外殼。
-- **韌體**：V2.0 ZS3L 改用 UART（Tuya MCU SDK），LED 改由 PB0 控制，韌體需配合修改。
+- **韌體**：V3.0 韌體在 [`firmware/`](firmware/README.md)（ESP-IDF v5.5.4＋esp-zigbee-lib v2）：Zigbee 路由器 4 個開關端點、指撥 4 種模式與風速互鎖、EV1527 遙控器學習、按鍵／燈號。主機端單元測試與完整編譯都在 CI。實際入網與遙控器相容性要打樣後驗證。
 - 原始 Altium 檔、Gerber、請款單等外包資料**不公開**，不在本 repo。
 
 ---
@@ -306,6 +309,8 @@ cd hardware/WO30109_FreshAir && kicad-cli jobset run --file WO30109_FreshAir.kic
 - MEAN WELL IRM-02 規格書：<https://www.meanwell.com/Upload/PDF/IRM-02/IRM-02-SPEC.PDF>
 - Omron G5Q：<https://omronfs.omron.com/en_US/ecb/products/pdf/en-g5q.pdf>
 - Tuya ZS3L：<https://developer.tuya.com/en/docs/iot/zs3l?id=K97r37j19f496>
+- Espressif ESP32-C6-WROOM-1 規格書 v1.4：<https://documentation.espressif.com/esp32-c6-wroom-1_wroom-1u_datasheet_en.pdf>
+- JSMSEMI SYN480R 規格書：LCSC C916347
 - Diodes AP63203：<https://www.diodes.com/assets/Datasheets/AP63200-AP63201-AP63203-AP63205.pdf>
 - IEC 60664-1 間距表（TI SLUP421）：<https://www.ti.com/lit/pdf/SLUP421>
 - KiCad Git 整合：<https://docs.kicad.org/9.0/en/kicad/kicad.html>

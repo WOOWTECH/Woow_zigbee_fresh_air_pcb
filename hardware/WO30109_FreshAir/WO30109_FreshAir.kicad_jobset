@@ -48,8 +48,34 @@
       "type": "sch_export_bom",
       "description": "BOM",
       "settings": {
-        "fields_ordered": [],
-        "output_filename": "WO30109_FreshAir-bom.csv"
+        "fields_ordered": [
+          "Reference",
+          "Value",
+          "Footprint",
+          "LCSC",
+          "${QUANTITY}"
+        ],
+        "output_filename": "WO30109_FreshAir-bom.csv",
+        "fields_labels": [
+          "Reference",
+          "Value",
+          "Footprint",
+          "LCSC",
+          "Qty"
+        ],
+        "fields_group_by": [
+          "Value",
+          "Footprint",
+          "LCSC"
+        ],
+        "field_delimiter": ",",
+        "string_delimiter": "\"",
+        "ref_delimiter": ",",
+        "ref_range_delimiter": "",
+        "exclude_dnp": true,
+        "include_excluded_from_bom": false,
+        "sort_field": "Reference",
+        "sort_asc": true
       }
     },
     {

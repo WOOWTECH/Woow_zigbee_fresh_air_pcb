@@ -37,6 +37,16 @@ fp('TerminalBlock_Pluggable_1x08_P5.08mm_Horizontal','Pluggable terminal header 
 # 6x6 輕觸開關 SMD（ZX-QC66-4.3TP）：1,1 / 2,2
 pads=[pad_smd(1,-4.25,-2.25,2.1,1.4),pad_smd(1,4.25,-2.25,2.1,1.4),pad_smd(2,-4.25,2.25,2.1,1.4),pad_smd(2,4.25,2.25,2.1,1.4)]
 fp('SW_Push_6x6mm_SMD_ZX-QC66','6x6mm SMD tactile switch (Megastar ZX-QC66-4.3TP, JLC C7470150)',(-3,-3,3,3),(-5.4,-3.0,5.4,3.0),'smd',pads)
+# Espressif ESP32-C6-WROOM-1（V3.0）：18×25.5mm，天線在 -Y 端 6mm；原點=本體中心。
+# 規格書 v1.4 Figure 10-1：兩側各 14 腳、1.27mm 間距、最後一腳離底邊 1.5mm；EPAD 3.3mm 方形，中心離 pin1 側邊 7.495、離底邊 12.29。
+# 焊盤 1.5×0.9，中心 x=±8.75（伸出本體 0.25mm，方便目檢與手修）。天線下方兩層禁銅（含板邊外延 1mm）。
+pads=[pad_smd(n,-8.75,round(-5.26+(n-1)*1.27,3),1.5,0.9) for n in range(1,15)]
+pads+=[pad_smd(n,8.75,round(11.25-(n-15)*1.27,3),1.5,0.9) for n in range(15,29)]
+pads+=[f'\t(pad "29" smd rect (at -1.505 0.46) (size 3.3 3.3) (layers "F.Cu" "F.Paste" "F.Mask") (solder_paste_margin -0.4) (uuid "{U()}"))\n']
+keep=f'\t(zone (net 0) (net_name "") (layers "F.Cu" "B.Cu") (uuid "{U()}") (name "ANT_KEEPOUT") (hatch edge 0.5) (connect_pads (clearance 0)) (min_thickness 0.25) (filled_areas_thickness no) (keepout (tracks not_allowed) (vias not_allowed) (pads not_allowed) (copperpour not_allowed) (footprints allowed)) (fill (thermal_gap 0.5) (thermal_bridge_width 0.5)) (polygon (pts (xy -10 -13.75) (xy 10 -13.75) (xy 10 -6.75) (xy -10 -6.75))))\n'
+ant='\t(fp_line (start -9 -6.75) (end 9 -6.75) (stroke (width 0.1) (type dash)) (layer "F.Fab") (uuid "%s"))\n' % U()
+fp('Espressif_ESP32-C6-WROOM-1','Espressif ESP32-C6-WROOM-1 module 18x25.5mm (datasheet v1.4 Fig.10-1); PCB antenna at -Y, place at board edge; copper keep-out under antenna',
+   (-9,-12.75,9,12.75),(-9.75,-13.0,9.75,13.0),'smd',pads,keep+ant)
 # Omron G5Q-1：沿用 KiCad 官方封裝，只把 courtyard 收到本體+0.25mm（原板繼電器間距 10.67mm、本體 10.0mm）
 src=open('/usr/share/kicad/footprints/Relay_THT.pretty/Relay_SPDT_Omron-G5Q-1.kicad_mod').read()
 CRT={'-1.95':'-1.43','19.7':'19.21','-9.55':'-9.06','1.95':'1.44'}
