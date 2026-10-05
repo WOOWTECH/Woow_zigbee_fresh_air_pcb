@@ -96,15 +96,38 @@ class Router:
         zones = list(self.b.Zones())
         for fp in self.b.GetFootprints():                # 封裝內建的禁布區（ESP32 天線下方）不在 board.Zones() 裡
             zones += list(fp.Zones())
-        for z in zones:                                  # 禁布區（天線）
-            if z.GetIsRuleArea() and z.GetDoNotAllowTracks():
+        for z in zones:                                  # 禁布區（ESP32 天線、NFC 線圈）
+            # NFC 線圈的禁布區允許走線（給自己的背面跨線用），但禁鋪銅：別的網路照樣不准進去
+            if z.GetIsRuleArea() and (z.GetDoNotAllowTracks() or z.GetDoNotAllowZoneFills()):
                 pts = [px(*to_g(z.Outline().CVertex(i))) for i in range(z.Outline().TotalVertices())]
-                for L in ("F", "B"): dr[L].polygon(pts, fill=1)
+                for L in ("F", "B"):
+                    dr[L].polygon(pts, fill=1)
+                    # 往外擴走線半寬＋0.05：只塗多邊形的話，走線中心貼邊、線寬會吃進禁布區
+                    dr[L].line(pts + pts[:1], fill=1, width=max(1, int(round(2 * (hw + 0.05) * RES))))
         m = {L: np.array(imgs[L], dtype=bool) for L in imgs}
         e = int(round((self.edge + hw) * RES))
         for L in m:
             m[L][:e, :] = m[L][-e:, :] = True; m[L][:, :e] = m[L][:, -e:] = True
+        # 非矩形板框（V3.2 起是 L 形）：板外一律是障礙，再往內擴「板邊間距＋半線寬」
+        out = self._outside(e)
+        if out is not None:
+            for L in m:
+                m[L] |= out
         return m
+
+    def _outside(self, e):
+        if getattr(self, "_outside_cache", None) is not None:
+            return self._outside_cache
+        from PIL import ImageFilter
+        ps = pcbnew.SHAPE_POLY_SET()
+        if not self.b.GetBoardPolygonOutlines(ps, False) or ps.OutlineCount() == 0:
+            return None
+        ol = ps.Outline(0)
+        pts = [px(*to_g(ol.CPoint(i))) for i in range(ol.PointCount())]
+        img = Image.new("L", (NX, NY), 255); ImageDraw.Draw(img).polygon(pts, fill=0)     # 板內 0、板外 255
+        img = img.filter(ImageFilter.MaxFilter(2 * e + 1))
+        self._outside_cache = np.array(img) > 0
+        return self._outside_cache
 
     def terminals(self, net):
         out = []

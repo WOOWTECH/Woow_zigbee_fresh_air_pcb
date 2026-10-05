@@ -5,6 +5,7 @@
   * VERSION="1.3"：照原設計 V1.3（2025-08-28 PDF 原理圖）重繪，不改任何電路。
   * VERSION="2.0"：改版，差異寫在 CHANGES。
   * VERSION="3.0"：STM32＋Tuya ZS3L＋EPA09-4D → ESP32-C6 單晶片（Zigbee 3.0）＋SYN480R 433MHz 接收，差異寫在 CHANGES。
+  * VERSION="3.3"：加 NFC（U6 ST25DV04KC＋板上線圈 L5），J5 改到左側板邊，左半段再加高。
   * VERSION="3.2"：加 4 路光耦 DI（J5、U5 TLP290-4）、拿掉指撥 S1，板子上緣加長 10mm。
   * VERSION="3.1"：只換值不改板：433 匹配 C15/C16/L3/L4 重新選值、D1–D4 改 Schottky B5819W（配合韌體 PWM 保持）。
 """
@@ -22,6 +23,7 @@ def build(version="2.0"):
     v3 = version.startswith("3")
     v31 = v3 and tuple(map(int, version.split("."))) >= (3, 1)   # V3.1：433 匹配值、續流 Schottky
     v32 = v3 and tuple(map(int, version.split("."))) >= (3, 2)   # V3.2：4 路光耦 DI、拿掉指撥
+    v33 = v3 and tuple(map(int, version.split("."))) >= (3, 3)   # V3.3：NFC（ST25DV04KC＋板上線圈）
     v2 = version.startswith("2") or v3          # V3.0 沿用 V2.0 的市電、電源、繼電器
 
     # ---------------- 市電輸入 ----------------
@@ -70,6 +72,10 @@ def build(version="2.0"):
         if v32:   # 指撥拿掉（IO10/IO11 空出）。DI1–4 接上排 IO22/IO21/IO20/IO19（20–17 腳）：U5 就在正上方約 16mm，
                   # 背面直上、不經模組底下；左右順序與 U5 輸出一致不交叉；避開 433 匹配網路（x>120.9）。皆非 strapping 腳
             esp.update({"11": None, "12": None, "20": "DI_1", "19": "DI_2", "18": "DI_3", "17": "DI_4"})
+        if v33:   # 6 條線都從上方進 U1 上排，照左右順序一對一接、彼此不交叉（不這樣排，DI 與 I2C 長線在 U3 底下
+                  # 互相交叉，佈線器無解）：DI_1–4 → 26（IO3）、23（IO15）、20（IO22）、19（IO21）；SDA → 18（IO20）、SCL → 17（IO19）。
+                  # IO15 是 strapping 腳，但只在燒了 EFUSE_JTAG_SEL_ENABLE 時才讀（選 JTAG 來源），出廠不受 DI 電位影響
+            esp.update({"26": "DI_1", "23": "DI_2", "20": "DI_3", "19": "DI_4", "18": "NFC_SDA", "17": "NFC_SCL"})
         add("U1", "WOOW:ESP32-C6-WROOM-1", "ESP32-C6-WROOM-1-N8", "WOOW:Espressif_ESP32-C6-WROOM-1", "C5366877", esp)
         add("C1", "Device:C", "22uF 25V", C0805, "C45783", {"1": "+3V3", "2": "GND"})       # 模組 3V3 腳旁（規格書 Fig.9-1）
         add("C2", "Device:C", "100nF", C0603, "C14663", {"1": "+3V3", "2": "GND"})
@@ -175,6 +181,20 @@ def build(version="2.0"):
             opto.update({str(2 * k - 1): f"DI_A{k}", str(2 * k): "DI_COM", str(18 - 2 * k): f"DI_{k}", str(17 - 2 * k): "GND"})
         add("U5", "WOOW:TLP290-4", "TLP290-4", "Package_SO:SOP-16_4.55x10.3mm_P1.27mm", "C39031", opto)
 
+    # ---------------- V3.3：NFC 設定介面（ST25DV04KC＋板上印刷線圈）----------------
+    if v33:
+        # 手機（iOS Core NFC／Android，ISO 15693）讀寫 EEPROM 與 256B mailbox；ESP32 經 I2C 讀同一份設定。
+        # 線圈 L1N 1.27µH（scripts/nfc_coil.py），28.5pF 內建＋C22 75pF → 13.88MHz（略高於 13.56MHz，留給外殼與手機靠近
+        # 的下移）；C24 空位微調。GPO 不接：韌體每 50ms 輪詢 IT_STS_Dyn。V_EH 不用（預設關閉）。
+        add("U6", "WOOW:ST25DV04KC", "ST25DV04KC-IE6S3", "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", "C3304276",
+            {"1": None, "2": "NFC_AC0", "3": "NFC_AC1", "4": "GND", "5": "NFC_SDA", "6": "NFC_SCL", "7": None, "8": "+3V3"})
+        add("L5", "Device:L", "NFC coil 1.27uH", "WOOW:NFC_Coil_14.9x14.6mm_8T", "", {"1": "NFC_AC0", "2": "NFC_AC1"})
+        add("C22", "Device:C", "75pF C0G", C0603, "C1681", {"1": "NFC_AC0", "2": "NFC_AC1"})
+        add("C24", "Device:C", "DNP trim", C0603, "", {"1": "NFC_AC0", "2": "NFC_AC1"})
+        add("C23", "Device:C", "100nF", C0603, "C14663", {"1": "+3V3", "2": "GND"})
+        add("R24", "Device:R", "10k", R0603, "C25804", {"1": "+3V3", "2": "NFC_SDA"})
+        add("R25", "Device:R", "10k", R0603, "C25804", {"1": "+3V3", "2": "NFC_SCL"})
+
     # ---------------- 4 路繼電器 ----------------
     nc = {1: None, 2: None, 3: "DO_3_NC", 4: "DO_4_NC"}
     for k in range(1, 5):
@@ -204,6 +224,11 @@ MAINS = {"AC_L_IN", "AC_L", "AC_N", "DO_COM", "DO_1_NO", "DO_2_NO", "DO_3_NO", "
 POWER_FLAGS = ["+12V", "+3V3", "GND", "AC_L", "AC_N", "AC_L_IN"]
 
 CHANGES = {
+    "3.3": [
+        "U6 ST25DV04KC（C3304276）＋L5 板上印刷線圈 14.9×14.6mm 8 圈 1.27µH＋C22 75pF（13.88MHz）＋C24 微調空位",
+        "NFC I2C：SDA＝IO20、SCL＝IO19，各 10k 上拉；GPO 不接（韌體輪詢）。DI_1–4 改接 IO3／IO15／IO22／IO21（與 I2C 照左右順序排，不交叉）",
+        "J5 改到左側板邊（DI 電線從左側出），左上角留給線圈；左半段高度 93.08→107.2mm",
+    ],
     "3.2": [
         "J5 7P 3.5mm 插拔端子：+12V（R23 1.5k 限流，短路 8mA）／IN1–IN4／COM／GND；U5 TLP290-4 交流輸入光耦（NPN/PNP、乾接點都可）",
         "DI1–DI4 → IO22/IO21/IO20/IO19（ESP32 內建上拉＋10nF）；S1 指撥拿掉（IO10/IO11 空出），模式改軟體設定",
