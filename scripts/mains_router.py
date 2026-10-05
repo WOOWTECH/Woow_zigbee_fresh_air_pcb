@@ -15,6 +15,19 @@ OX, OY = 100.0, 100.0
 NX, NY = int(W * RES) + 1, int(H * RES) + 1
 
 
+def set_board(height):
+    """板子高度改了（V3.2 上緣加長）就呼叫：格點涵蓋整塊板；板底邊（Gerber 原點）不動"""
+    global H, OY, NY
+    bottom = OY + H
+    H, OY = height, bottom - height
+    NY = int(H * RES) + 1
+
+
+def board_height(board):
+    bb = board.GetBoardEdgesBoundingBox()
+    return round(pcbnew.ToMM(bb.GetHeight()), 3)
+
+
 def to_g(v):                     # KiCad VECTOR2I -> gerber mm
     return pcbnew.ToMM(v.x) - OX - W / 2, OY + H - pcbnew.ToMM(v.y)
 
@@ -80,7 +93,10 @@ class Router:
         for (n, L, p, q, w) in self.extra:
             d = infl(n)
             if d is not None: seg(L, p, q, w / 2 + d)
-        for z in self.b.Zones():                         # 禁布區（天線）
+        zones = list(self.b.Zones())
+        for fp in self.b.GetFootprints():                # 封裝內建的禁布區（ESP32 天線下方）不在 board.Zones() 裡
+            zones += list(fp.Zones())
+        for z in zones:                                  # 禁布區（天線）
             if z.GetIsRuleArea() and z.GetDoNotAllowTracks():
                 pts = [px(*to_g(z.Outline().CVertex(i))) for i in range(z.Outline().TotalVertices())]
                 for L in ("F", "B"): dr[L].polygon(pts, fill=1)
@@ -99,8 +115,12 @@ class Router:
                     out.append((to_g(pad.GetPosition()), L))
         return out
 
-    def route_net(self, net, via_cost=40, clear_mm=1.2):
-        """clear_mm：終點焊盤周圍清掉障礙的半徑；None = 只清自己焊盤本身（細腳距 IC 用，避免壓到鄰腳）"""
+    def route_net(self, net, via_cost=40, clear_mm=1.2, stamp_r=1.0, keep_cl=None):
+        """clear_mm：終點焊盤周圍清掉障礙的半徑；None = 只清自己焊盤本身（細腳距 IC 用，避免壓到鄰腳）
+        stamp_r：焊盤周圍多大範圍算「已接上」（路徑可從這裡出發）。1.0 是舊行為；細腳焊盤（SOP 0.6mm 寬）要用 0，
+        否則走線會停在焊盤外 1mm、而且這圈不檢查障礙，可能壓到別的網路
+        keep_cl：clear_mm=None 清掉自己焊盤（含沿長邊延伸的出腳通道）時，別的網路的銅仍以這個間距算障礙。
+        None 是舊行為（整塊清掉）—— 這會讓過孔打在旁邊別條網路的走線上（V3.2 的 DI_2 過孔壓到 DI_3）"""
         m = self.masks(net)
         terms = self.terminals(net)
         if len(terms) < 2: return []
@@ -108,7 +128,7 @@ class Router:
 
         def cell(g): a, b = px(*g); return int(round(a)), int(round(b))
 
-        def stamp(g, Ls, r=1.0):
+        def stamp(g, Ls, r=stamp_r):
             ix, iy = cell(g); rr = int(r * RES)
             for L in Ls:
                 for dx in range(-rr, rr + 1):
@@ -129,6 +149,13 @@ class Router:
                     Ls = ["F", "B"] if pad.GetAttribute() == pcbnew.PAD_ATTRIB_PTH else (["B"] if pad.IsOnLayer(pcbnew.B_Cu) else ["F"])
                     for L in Ls:
                         m[L][int(b_):int(e) + 1, int(a):int(c) + 1] = False
+            if keep_cl is not None:                    # 別的網路的實際銅（小間距）還是要擋
+                saved = self.cl, self.selv
+                self.cl, self.selv = keep_cl, max(keep_cl, self.selv)
+                hard = self.masks(net)
+                self.cl, self.selv = saved
+                for L in ("F", "B"):
+                    m[L] |= hard[L]
         else:                                          # 自己焊盤附近不算障礙
             r = int(round(clear_mm * RES))
             for L in ("F", "B"):

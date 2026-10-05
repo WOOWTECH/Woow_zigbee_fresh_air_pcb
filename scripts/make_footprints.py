@@ -34,6 +34,10 @@ fp('TerminalBlock_Pluggable_1x02_P5.00mm_Horizontal','Pluggable terminal header 
 # 插拔式端子座 8P 5.08mm（開口朝 +Y = 板邊）；Pin1 在 +X（原板 AC_L）
 pads=[pad_th(1,17.78,0,2.3,1.5,'rect')]+[pad_th(n,17.78-5.08*(n-1),0,2.3,1.5) for n in range(2,9)]
 fp('TerminalBlock_Pluggable_1x08_P5.08mm_Horizontal','Pluggable terminal header 8P 5.08mm right-angle (e.g. 15EDGRC-5.08-08P), holes 1.5mm',(-20.4,-2.4,20.4,7.9),(-20.7,-2.7,20.7,8.2),'through_hole',pads)
+# 插拔式端子座 7P 3.50mm（V3.2 DI 輸入，開口朝 -Y = 板邊）；Pin1（+12V）在 -X。
+# 外形取 3.5mm 直角插拔座常見尺寸（如 KF2EDGR-3.5-07P／15EDGRC-3.5-07P：孔 1.2、深約 7mm），下單前要對實際料號核對
+pads=[pad_th(1,-10.5,0,2.0,1.2,'rect')]+[pad_th(n,-10.5+3.5*(n-1),0,2.0,1.2) for n in range(2,8)]
+fp('TerminalBlock_Pluggable_1x07_P3.50mm_Horizontal','Pluggable terminal header 7P 3.50mm right-angle (e.g. KF2EDGR-3.5-07P), holes 1.2mm; body outline UNVERIFIED',(-12.5,-7.2,12.5,2.0),(-12.8,-7.5,12.8,2.3),'through_hole',pads)
 # 6x6 輕觸開關 SMD（ZX-QC66-4.3TP）：1,1 / 2,2
 pads=[pad_smd(1,-4.25,-2.25,2.1,1.4),pad_smd(1,4.25,-2.25,2.1,1.4),pad_smd(2,-4.25,2.25,2.1,1.4),pad_smd(2,4.25,2.25,2.1,1.4)]
 fp('SW_Push_6x6mm_SMD_ZX-QC66','6x6mm SMD tactile switch (Megastar ZX-QC66-4.3TP, JLC C7470150)',(-3,-3,3,3),(-5.4,-3.0,5.4,3.0),'smd',pads)
