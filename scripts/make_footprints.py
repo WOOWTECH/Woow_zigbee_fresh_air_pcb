@@ -64,7 +64,7 @@ def nfc_coil(W, H, n, w, s, name):
     m = 0.5                                                        # 禁布區外擴：別的銅、鋪銅、過孔都不准進線圈
     keep = (f'\t(zone (net 0) (net_name "") (layers "F.Cu" "B.Cu") (uuid "{U()}") (name "NFC_KEEPOUT") (hatch edge 0.5) '
             f'(connect_pads (clearance 0)) (min_thickness 0.25) (filled_areas_thickness no) (keepout (tracks allowed) '
-            f'(vias not_allowed) (pads not_allowed) (copperpour not_allowed) (footprints allowed)) (fill (thermal_gap 0.5) '
+            f'(vias not_allowed) (pads allowed) (copperpour not_allowed) (footprints allowed)) (fill (thermal_gap 0.5) '
             f'(thermal_bridge_width 0.5)) (polygon (pts (xy {-W/2-m:.2f} {-H/2-m:.2f}) (xy {W/2+m:.2f} {-H/2-m:.2f}) '
             f'(xy {W/2+m:.2f} {H/2+m:.2f}) (xy {-W/2-m:.2f} {H/2+m:.2f}))))\n')
     silk = f'\t(fp_text user "NFC" (at 0 0) (layer "F.SilkS") (uuid "{U()}") (effects (font (size 1.5 1.5) (thickness 0.2))))\n'
