@@ -1,0 +1,29 @@
+* WO30109 V3.1 繼電器 PWM 降壓保持：ESP32-C6 LEDC → R5 1k → Q1 Si2302 → G5Q-1 DC12，D1 B5819W 續流
+* 時序同韌體預設（Kconfig）：1ms 起全壓 100ms（Omron G5Q-1 要求 ≥100ms），之後 20kHz、60% duty 保持，251ms 關斷
+* 線圈、MOSFET 模型同 relay_driver.cir（360Ω、電感規格書未列取 200mH，L/R 0.56ms ≫ PWM 週期 50µs）
+* B5819W：Vf 約 0.3V@20mA、0.55V@1A（規格書 600mV@1A），Omron PWM 驗證條件要續流二極體 Vf ≤0.4V
+.param LCOIL=200m
+VDD  vdd  0 DC 12
+VPWM pwm 0 PULSE(0 3.3 0 10n 10n 30u 50u)
+BG   gpio 0 V = (time > 1m && time < 101m) ? 3.3 : ((time >= 101m && time < 251m) ? v(pwm) : 0)
+R5   gpio g  1k
+R9   g    0  10k
+M1   d g 0 0 NSI2302 W=1 L=1
+.model NSI2302 NMOS(LEVEL=1 VTO=0.63 KP=26 LAMBDA=0.01 CGSO=1.2n CGDO=0.15n)
+RCOIL vdd c1 360
+LCOIL c1 d {LCOIL}
+VD1  d dk DC 0
+D1   dk vdd DB5819W
+.model DB5819W D(IS=1u N=1.2 RS=0.1 CJO=110p M=0.5 BV=40 IBV=1m)
+.tran 1u 260m 0 1u
+.control
+run
+meas tran I_PULLIN   find i(VDD) at=100m
+meas tran ISUP_HOLD  avg i(VDD) from=200m to=250m
+meas tran ID1_HOLD   avg i(VD1) from=200m to=250m
+meas tran VD_HOLD    avg v(d) from=200m to=250m
+meas tran VDS_PK_PWM max v(d) from=200m to=250m
+meas tran VDS_PK_OFF max v(d) from=251m to=255m
+meas tran T_RELEASE  when i(VD1)=1m fall=LAST
+.endc
+.end

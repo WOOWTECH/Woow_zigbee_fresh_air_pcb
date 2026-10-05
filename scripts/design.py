@@ -5,6 +5,7 @@
   * VERSION="1.3"：照原設計 V1.3（2025-08-28 PDF 原理圖）重繪，不改任何電路。
   * VERSION="2.0"：改版，差異寫在 CHANGES。
   * VERSION="3.0"：STM32＋Tuya ZS3L＋EPA09-4D → ESP32-C6 單晶片（Zigbee 3.0）＋SYN480R 433MHz 接收，差異寫在 CHANGES。
+  * VERSION="3.1"：只換值不改板：433 匹配 C15/C16/L3/L4 重新選值、D1–D4 改 Schottky B5819W（配合韌體 PWM 保持）。
 """
 R0603 = "Resistor_SMD:R_0603_1608Metric"
 C0603 = "Capacitor_SMD:C_0603_1608Metric"
@@ -18,6 +19,7 @@ def build(version="2.0"):
         P[ref] = dict(lib=lib, value=val, footprint=fp, lcsc=lcsc, pins=pins)
 
     v3 = version.startswith("3")
+    v31 = v3 and tuple(map(int, version.split("."))) >= (3, 1)   # V3.1：433 匹配值、續流 Schottky
     v2 = version.startswith("2") or v3          # V3.0 沿用 V2.0 的市電、電源、繼電器
 
     # ---------------- 市電輸入 ----------------
@@ -74,8 +76,11 @@ def build(version="2.0"):
         add("C9", "Device:C", "100nF", C0603, "C14663", {"1": "+3V3", "2": "GND"})
         add("R4", "Device:R", "100R", R0603, "C22775", {"1": "LED", "2": "LED_A"})
         add("L1", "Device:LED", "Blue", "LED_SMD:LED_0603_1608Metric", "C965807", {"2": "LED_A", "1": "GND"})
-        # SYN480R 433.92MHz ASK/OOK 接收（規格書典型應用，433.92MHz 欄）：
-        #   ANT1 ─┬─ C16 1.8p ─ GND ─┬─ L3 27nH ─ GND，經 C15 6.8p 串到 ANT 腳；ANT 腳 L4 47nH 到 GND
+        # SYN480R 433.92MHz ASK/OOK 接收。匹配拓撲同規格書典型應用：
+        #   ANT1 ─┬─ C16 ─ GND ─┬─ L3 ─ GND，經 C15 串到 ANT 腳；ANT 腳 L4 到 GND
+        # 值（V3.1）：規格書值（C16 1.8p、L3 27n、C15 6.8p、L4 47n）照同系列 Micrel 原廠實測輸入阻抗算，
+        # 峰值落在 210–230MHz、433.92MHz 失配 8–13dB；改用 scripts/rf_match_opt.py 最差情況最佳化的值，
+        # 433.92MHz 失配 3–5.3dB（sim/rf_match.cir）。打樣後用 VNA 量 S11 微調。
         #   Y1 13.52127MHz/20pF 接 RO-GND；SHUT 接地（常開）；SQ 經 R14 0R 接地（關靜噪，靈敏度 +3dB）
         add("U3", "WOOW:SYN480R", "SYN480R", "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", "C916347",
             {"1": "GND", "2": "RF_IN", "3": "+3V3", "4": None, "5": "RF_DATA", "6": "GND", "7": "RF_SQ", "8": "RF_XTAL"})
@@ -83,10 +88,14 @@ def build(version="2.0"):
             {"1": "RF_XTAL", "3": "GND", "2": "GND", "4": "GND"})
         add("R14", "Device:R", "0R", R0603, "C21189", {"1": "RF_SQ", "2": "GND"})
         add("C17", "Device:C", "1uF", C0603, "C15849", {"1": "+3V3", "2": "GND"})
-        add("C15", "Device:C", "6.8pF C0G", C0603, "C1679", {"1": "RF_ANT", "2": "RF_IN"})
-        add("C16", "Device:C", "1.8pF C0G", C0603, "C1640", {"1": "RF_ANT", "2": "GND"})
-        add("L3", "Device:L", "27nH", "Inductor_SMD:L_0603_1608Metric", "C12100", {"1": "RF_ANT", "2": "GND"})
-        add("L4", "Device:L", "47nH", "Inductor_SMD:L_0603_1608Metric", "C29683", {"1": "RF_IN", "2": "GND"})
+        add("C15", "Device:C", "2.7pF C0G" if v31 else "6.8pF C0G", C0603, "C162221" if v31 else "C1679",
+            {"1": "RF_ANT", "2": "RF_IN"})
+        add("C16", "Device:C", "2.7pF C0G" if v31 else "1.8pF C0G", C0603, "C162221" if v31 else "C1640",
+            {"1": "RF_ANT", "2": "GND"})
+        add("L3", "Device:L", "47nH" if v31 else "27nH", "Inductor_SMD:L_0603_1608Metric", "C29683" if v31 else "C12100",
+            {"1": "RF_ANT", "2": "GND"})
+        add("L4", "Device:L", "33nH" if v31 else "47nH", "Inductor_SMD:L_0603_1608Metric", "C35050" if v31 else "C29683",
+            {"1": "RF_IN", "2": "GND"})
         add("ANT1", "Connector:Conn_01x01_Pin", "433MHz 1/4λ 17.3cm", "TestPoint:TestPoint_THTPad_D2.0mm_Drill1.0mm", "",
             {"1": "RF_ANT"})
 
@@ -150,7 +159,11 @@ def build(version="2.0"):
         add(f"R{8 + k}", "Device:R", "10k", R0603, "C25804", {"1": f"G{k}", "2": "GND"})
         add(f"Q{k}", "Transistor_FET:DMG2302U", "Si2302CDS", "Package_TO_SOT_SMD:SOT-23", "C5224182",
             {"1": f"G{k}", "2": "GND", "3": f"COIL{k}"})
-        add(f"D{k}", "Diode:1N4148W", "1N4148W", "Diode_SMD:D_SOD-123", "C81598", {"1": "+12V", "2": f"COIL{k}"})
+        # V3.1：續流改 Schottky B5819W（Vf 約 0.3V@20mA）。韌體 PWM 降壓保持時，Omron 驗證條件要 Vf ≤0.4V
+        if v31:
+            add(f"D{k}", "Device:D_Schottky", "B5819W", "Diode_SMD:D_SOD-123", "C8598", {"1": "+12V", "2": f"COIL{k}"})
+        else:
+            add(f"D{k}", "Diode:1N4148W", "1N4148W", "Diode_SMD:D_SOD-123", "C81598", {"1": "+12V", "2": f"COIL{k}"})
         add(f"K{k}", "Relay:G5Q-1", "G5Q-1 DC12", "WOOW:Relay_SPDT_Omron-G5Q-1_Tight", "C397244",
             {"1": "+12V", "5": f"COIL{k}", "2": "DO_COM", "3": f"DO_{k}_NO", "4": nc[k]})
     add("P3", "Connector_Generic:Conn_01x08", "AC OUT", "WOOW:TerminalBlock_Pluggable_1x08_P5.08mm_Horizontal", "",
@@ -168,6 +181,11 @@ MAINS = {"AC_L_IN", "AC_L", "AC_N", "DO_COM", "DO_1_NO", "DO_2_NO", "DO_3_NO", "
 POWER_FLAGS = ["+12V", "+3V3", "GND", "AC_L", "AC_N", "AC_L_IN"]
 
 CHANGES = {
+    "3.1": [
+        "433 匹配：C15 6.8p→2.7p、C16 1.8p→2.7p（C162221，±0.1pF）、L3 27n→47n（C29683）、L4 47n→33n（C35050）；拓撲與佈線不變",
+        "D1–D4 1N4148W → B5819W Schottky（C8598，基礎料、同 SOD-123）：配合韌體 PWM 降壓保持，續流 Vf ≤0.4V",
+        "電源預算：韌體全壓 100ms 後 PWM 60% 保持，每顆 12V 端 33.3→14.4mA（SPICE），4 顆全開最壞約 135mA < 167mA，取消 ≤3 顆限制",
+    ],
     "3.0": [
         "U1 STM32F103C8T6 + U3 Tuya ZS3L → U1 ESP32-C6-WROOM-1-N8（C5366877，Zigbee 3.0 單晶片，JLC 可貼）",
         "RF1 Ebelong EPA09-4D（4 路已解碼、無規格書、JLC 無料）→ U3 SYN480R（C916347）+ Y1 13.52127MHz + LC 匹配，ESP32 韌體解 EV1527/PT2262",

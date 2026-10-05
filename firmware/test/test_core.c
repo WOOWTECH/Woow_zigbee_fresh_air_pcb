@@ -4,6 +4,7 @@
 #include "fa_ev1527.h"
 #include "fa_button.h"
 #include "fa_remotes.h"
+#include "fa_coil.h"
 
 int ul_fail, ul_run;
 
@@ -205,6 +206,49 @@ TEST(button_classifies_press_lengths)
     CHECK_EQ(press(&b, &t, 1800), FA_BTN_NONE);            /* 1–3 秒之間：不動作 */
 }
 
+/* ---------------- 線圈 PWM 保持與 12V 電源預算 ---------------- */
+static const fa_coil_cfg_t COIL = {.pullin_ms = 100, .hold_pct = 60, .supply_mv = 12000,
+                                   .coil_ohm = 360, .diode_mv = 300};
+
+TEST(coil_full_voltage_for_pullin_then_hold)
+{
+    CHECK_EQ(fa_coil_duty_pct(&COIL, false, 0), 0);
+    CHECK_EQ(fa_coil_duty_pct(&COIL, true, 0), 100);
+    CHECK_EQ(fa_coil_duty_pct(&COIL, true, 99), 100);      /* Omron：全壓至少 100ms */
+    CHECK_EQ(fa_coil_duty_pct(&COIL, true, 100), 60);
+    CHECK_EQ(fa_coil_duty_pct(&COIL, false, 5000), 0);
+    fa_coil_cfg_t off = COIL; off.hold_pct = 100;           /* 關掉 PWM 保持＝一直全壓 */
+    CHECK_EQ(fa_coil_duty_pct(&off, true, 5000), 100);
+}
+
+TEST(coil_hold_voltage_above_omron_30_percent)
+{
+    CHECK_EQ(fa_coil_supply_ua(&COIL, 100), 33333);         /* 360Ω、12V：33.3mA */
+    uint32_t v = fa_coil_voltage_mv(&COIL, COIL.hold_pct);  /* 0.6·12 − 0.4·0.3 = 7.08V */
+    CHECK_EQ(v, 7080);
+    CHECK(v * 100 / COIL.supply_mv >= 30);                  /* G5Q-1 保持電壓下限 */
+    fa_coil_cfg_t lo = COIL; lo.hold_pct = 30;              /* 30% duty 扣掉二極體壓降就低於 30% */
+    CHECK(fa_coil_voltage_mv(&lo, 30) * 100 / lo.supply_mv < 30);
+}
+
+TEST(coil_budget_four_relays_fits_irm02)
+{
+    /* 12V 側：Zigbee 收訊等常態 26mA，+10dBm 發射峰值再 +32mA（docs/verification/V3.0.md §6）。
+     * IRM-02-12 額定 167mA；吸合錯開 ≥ pullin_ms，同時最多 1 顆在全壓。 */
+    const uint32_t base = 26000, burst = 32000, rated = 167000;
+    uint32_t hold = fa_coil_supply_ua(&COIL, 60);
+    CHECK(hold > 11000 && hold < 12500);                    /* 每顆保持約 11.8mA */
+    uint32_t worst = fa_coil_budget_ua(&COIL, 3, 1, base, burst);   /* 3 顆保持＋第 4 顆吸合＋發射 */
+    CHECK(worst < rated * 80 / 100);                        /* 約 127mA，留 20% 餘裕 */
+    CHECK(fa_coil_budget_ua(&COIL, 4, 0, base, burst) < rated * 70 / 100);
+    /* SPICE（sim/relay_pwm_hold.cir）：閘極 1k×Ciss 讓關斷晚約 1µs，實際 duty 約 64%，保持 14.4mA。
+     * 用 66% 當最壞情況重算，仍要在額定 85% 內 */
+    fa_coil_cfg_t slow = COIL; slow.hold_pct = 66;
+    CHECK(fa_coil_budget_ua(&slow, 3, 1, base, burst) < rated * 85 / 100);
+    fa_coil_cfg_t no_pwm = COIL; no_pwm.hold_pct = 100;     /* 沒有 PWM：4 顆全壓＋發射 191mA，超額 */
+    CHECK(fa_coil_budget_ua(&no_pwm, 3, 1, base, burst) > rated * 110 / 100);
+}
+
 int main(void)
 {
     RUN(mode_from_dip);
@@ -224,6 +268,9 @@ int main(void)
     RUN(key_to_channel_single_bit_msb_first);
     RUN(remotes_learn_dedupe_and_fifo);
     RUN(button_classifies_press_lengths);
+    RUN(coil_full_voltage_for_pullin_then_hold);
+    RUN(coil_hold_voltage_above_omron_30_percent);
+    RUN(coil_budget_four_relays_fits_irm02);
     printf("%d tests, %d failures\n", ul_run, ul_fail);
     return ul_fail ? 1 : 0;
 }

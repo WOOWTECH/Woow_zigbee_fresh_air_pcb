@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -20,6 +21,7 @@
 
 #include "board.h"
 #include "fa_button.h"
+#include "fa_coil.h"
 #include "fa_ev1527.h"
 #include "fa_relays.h"
 #include "fa_remotes.h"
@@ -81,6 +83,71 @@ static int relay_toggle(uint8_t ch)
     return relay_set(ch, on);
 }
 
+/* ---------------- 線圈驅動：全壓吸合 → PWM 降壓保持 ---------------- */
+/* 電源預算的前提（fa_coil.h、Kconfig help）。menuconfig 改過其中一項，另一項不會跟著變，所以在這裡擋。 */
+#if !CONFIG_FA_RELAY_PWM_HOLD && CONFIG_FA_MAX_RELAYS_ON > 3
+#error "全壓驅動 4 顆＋發射峰值約 191mA，超過 IRM-02-12 保護點：關掉 FA_RELAY_PWM_HOLD 時 FA_MAX_RELAYS_ON 要 ≤3"
+#endif
+#if CONFIG_FA_RELAY_PWM_HOLD && CONFIG_FA_RELAY_STAGGER_MS <= CONFIG_FA_RELAY_PULLIN_MS
+#error "FA_RELAY_STAGGER_MS 要大於 FA_RELAY_PULLIN_MS，才能保證同時最多 1 顆在全壓吸合"
+#endif
+#if CONFIG_FA_RELAY_PWM_HOLD
+#define COIL_RES  LEDC_TIMER_10_BIT
+#define COIL_FULL (1u << 10)                   /* LEDC duty = 2^res → 恆高 */
+static const fa_coil_cfg_t COIL_CFG = {.pullin_ms = CONFIG_FA_RELAY_PULLIN_MS, .hold_pct = CONFIG_FA_RELAY_HOLD_PCT,
+                                       .supply_mv = 12000, .coil_ohm = 360, .diode_mv = 300};
+static esp_timer_handle_t s_hold_timer[FA_CH];
+static bool               s_coil_on[FA_CH];
+static SemaphoreHandle_t  s_coil_lock;        /* 保持計時器回呼與 coil_set 互斥，避免「剛關掉又被設成保持」 */
+
+static void coil_write(uint8_t ch, uint8_t pct)
+{
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, (ledc_channel_t)ch, pct >= 100 ? COIL_FULL : COIL_FULL * pct / 100);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, (ledc_channel_t)ch);
+}
+
+static void coil_hold_cb(void *arg)
+{
+    uint8_t ch = (uint8_t)(uintptr_t)arg;
+    xSemaphoreTake(s_coil_lock, portMAX_DELAY);
+    if (s_coil_on[ch]) coil_write(ch, fa_coil_duty_pct(&COIL_CFG, true, COIL_CFG.pullin_ms));
+    xSemaphoreGive(s_coil_lock);
+}
+
+static void coil_init(void)
+{
+    s_coil_lock = xSemaphoreCreateMutex();
+    ledc_timer_config_t t = {.speed_mode = LEDC_LOW_SPEED_MODE, .duty_resolution = COIL_RES,
+                             .timer_num = LEDC_TIMER_0, .freq_hz = CONFIG_FA_RELAY_PWM_HZ, .clk_cfg = LEDC_AUTO_CLK};
+    ESP_ERROR_CHECK(ledc_timer_config(&t));
+    for (int i = 0; i < FA_CH; i++) {
+        ledc_channel_config_t c = {.gpio_num = RELAY_PIN[i], .speed_mode = LEDC_LOW_SPEED_MODE,
+                                   .channel = (ledc_channel_t)i, .timer_sel = LEDC_TIMER_0, .duty = 0};
+        ESP_ERROR_CHECK(ledc_channel_config(&c));
+        esp_timer_create_args_t a = {.callback = coil_hold_cb, .arg = (void *)(uintptr_t)i, .name = "coil_hold"};
+        ESP_ERROR_CHECK(esp_timer_create(&a, &s_hold_timer[i]));
+    }
+    ESP_LOGI(TAG, "線圈：全壓 %dms → %d%% @ %dHz；保持時 %lumV、12V 端每顆 %lu.%01lumA",
+             CONFIG_FA_RELAY_PULLIN_MS, CONFIG_FA_RELAY_HOLD_PCT, CONFIG_FA_RELAY_PWM_HZ,
+             (unsigned long)fa_coil_voltage_mv(&COIL_CFG, COIL_CFG.hold_pct),
+             (unsigned long)(fa_coil_supply_ua(&COIL_CFG, COIL_CFG.hold_pct) / 1000),
+             (unsigned long)(fa_coil_supply_ua(&COIL_CFG, COIL_CFG.hold_pct) % 1000 / 100));
+}
+
+static void coil_set(uint8_t ch, bool on)
+{
+    esp_timer_stop(s_hold_timer[ch]);          /* 沒在跑會回 ESP_ERR_INVALID_STATE，忽略 */
+    xSemaphoreTake(s_coil_lock, portMAX_DELAY);
+    s_coil_on[ch] = on;
+    coil_write(ch, fa_coil_duty_pct(&COIL_CFG, on, 0));
+    xSemaphoreGive(s_coil_lock);
+    if (on) esp_timer_start_once(s_hold_timer[ch], COIL_CFG.pullin_ms * 1000ULL);
+}
+#else
+static void coil_init(void) {}
+static void coil_set(uint8_t ch, bool on) { gpio_set_level(RELAY_PIN[ch], on); }
+#endif
+
 static void relay_task(void *arg)
 {
     int64_t last_on_us = 0;
@@ -101,7 +168,7 @@ static void relay_task(void *arg)
             if (wait_us > 0) vTaskDelay(pdMS_TO_TICKS(wait_us / 1000 + 1));
             last_on_us = esp_timer_get_time();
         }
-        gpio_set_level(RELAY_PIN[a.ch], a.on);
+        coil_set(a.ch, a.on);
         ESP_LOGI(TAG, "繼電器 %d %s", a.ch + 1, a.on ? "ON" : "OFF");
     }
 }
@@ -257,7 +324,8 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(err);
 
-    gpio_setup();
+    gpio_setup();                              /* 繼電器腳先拉低，LEDC 接手前不會吸合 */
+    coil_init();
     s_lock = xSemaphoreCreateMutex();
     s_relay_q = xQueueCreate(32, sizeof(fa_action_t));
     s_rf_q = xQueueCreate(256, sizeof(rf_edge_t));

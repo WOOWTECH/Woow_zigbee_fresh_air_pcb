@@ -1,12 +1,45 @@
 menu "WO30109 新風控制器"
+    config FA_RELAY_PWM_HOLD
+        bool "繼電器 PWM 降壓保持（吸合後改 PWM，省 12V 電流）"
+        default y
+        help
+            每顆線圈先全壓 FA_RELAY_PULLIN_MS，之後用 LEDC 以 FA_RELAY_PWM_HZ、FA_RELAY_HOLD_PCT duty 保持。
+            60% duty、B5819W 續流時線圈平均 7.08V（額定 59%，Omron G5Q-1 要求 ≥30%），12V 端每顆 11.8mA（全壓 33.3mA）。
+            關掉就回到 V3.0 的 GPIO 全壓驅動，FA_MAX_RELAYS_ON 預設回 3。
+
+    config FA_RELAY_PULLIN_MS
+        int "全壓吸合時間 (ms)"
+        depends on FA_RELAY_PWM_HOLD
+        range 100 1000
+        default 100
+        help
+            Omron G5Q-1 規格書 p.6：降壓保持前要先加額定電壓至少 100ms。
+
+    config FA_RELAY_HOLD_PCT
+        int "保持 duty (%)"
+        depends on FA_RELAY_PWM_HOLD
+        range 50 100
+        default 60
+        help
+            Omron 驗證 PWM 保持（-PW 型）的條件是 duty ≥50%、≥10kHz、續流二極體 Vf ≤0.4V。
+            標準版 G5Q-1 沒有 PWM 背書，只規定保持電壓 ≥30%；取 60% 留給溫升（線圈電阻 +0.4%/°C）與振動。
+
+    config FA_RELAY_PWM_HZ
+        int "PWM 頻率 (Hz)"
+        depends on FA_RELAY_PWM_HOLD
+        range 10000 40000
+        default 20000
+
     config FA_MAX_RELAYS_ON
         int "同時吸合的繼電器上限"
         range 1 4
+        default 4 if FA_RELAY_PWM_HOLD
         default 3
         help
-            12V 電源 IRM-02-12 額定 167mA、110%（184mA）進保護。G5Q 線圈每顆 33mA；Zigbee 收訊在 12V 側約 26mA，
-            +10dBm 發射峰值再多約 32mA。3 顆：峰值約 158mA（在額定內）。4 顆：持續 159mA、發射峰值約 191mA
-            （超過保護點，只有封包期間的毫秒級），設成 4 前要實測。三個風速模式本來最多只會同時吸 3 顆。
+            12V 電源 IRM-02-12 額定 167mA、110%（184mA）進保護。12V 側常態約 26mA，+10dBm 發射峰值再多 32mA。
+            PWM 保持（預設）：3 顆保持＋1 顆吸合＋發射 ≈ 127mA，可以 4 顆全開（吸合錯開 ≥ FA_RELAY_PULLIN_MS）。
+            全壓驅動：4 顆＋發射峰值約 191mA，超過保護點，所以上限 3。
+
     config FA_ZB_TX_POWER
         int "802.15.4 發射功率 (dBm)"
         range -15 20
@@ -18,5 +51,8 @@ menu "WO30109 新風控制器"
         default 200
     config FA_RELAY_STAGGER_MS
         int "兩顆繼電器吸合的最小間隔 (ms)"
+        default 110 if FA_RELAY_PWM_HOLD
         default 50
+        help
+            PWM 保持時要大於 FA_RELAY_PULLIN_MS，確保同一時間最多 1 顆在全壓吸合（電源預算的前提）。
 endmenu
