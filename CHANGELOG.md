@@ -26,6 +26,22 @@ IRM-02-12 額定 12V 167mA。ESP32-C6 Zigbee 發射 +12dBm 峰值 185mA@3.3V，�
 - 修正計算：路由器常態是**收訊** 73mA（12V 側 23mA），4 顆全吸持續 159mA 在額定內；超額的是發射峰值。韌體預設同時吸合 ≤3 顆、發射 +10dBm（峰值 158mA）、不啟動 Wi-Fi。
 - 硬體根治：下一版改 IRM-03-12（250mA，C6640065），但封裝腳位完全不同，市電要重新佈線。
 
+## [3.3.1] — NFC 設定韌體
+
+- **協定與驗證**（純 C、主機可測）：
+  - `fa_nfc`：STATE／REQUEST／ACK 格式、gen 樂觀鎖、HMAC 簽章、mailbox 指令（GET_STATUS、IDENTIFY、LEARN_REMOTE、FACTORY_RESET，以 challenge 防重送）。
+  - `fa_sha256`：SHA-256／HMAC-SHA256。
+- **為什麼由 ESP32 驗簽**：ST25DV 的 RF 密碼 I2C 端無法設定（規格書 Table 60），所以不用晶片的 RF 寫保護，改由 ESP32 驗簽。每台 8 位數 PIN 第一次開機產生、存 NVS。
+- **ESP32 端**：
+  - `st25dv.c`：I2C 驅動（16-byte 分列寫入＋ACK polling、I2C 密碼開 FTM、mailbox）。
+  - `fa_nfc_port.c`：每 100ms 輪詢。
+  - `app_main`：套用設定時，若互鎖分組改變就先全關再重新分組。
+- **板子版本與腳位**：`board.h` 以 menuconfig 選 V3.3／V3.2；V3.3 的 DI 接 IO3／IO15／IO22／IO21、NFC I2C 接 IO20／IO19。
+- **給 App 開發**：[`docs/nfc-protocol.md`](docs/nfc-protocol.md) 規格，以及 [`tools/nfc_ref.py`](tools/nfc_ref.py) 參考實作（只用標準函式庫）。
+- **驗證**：
+  - 主機測試 36 個：SHA-256 用 FIPS 180-2 向量、HMAC 用 RFC 4231 case 2／6、CRC 用 CCITT 檢查值；C 與 Python 逐 byte 對照測試向量。
+  - `idf.py build` 在 V3.3 與 V3.2 兩種設定下都是 0 warning。
+
 ## [3.3] — NFC 設定介面（ST25DV04KC＋板上印刷線圈）
 
 手機 App 貼近板子即可讀寫進階設定（DI／DO 模式、點動時間、遙控器清單），Apple／Google 使用者不用 Wi-Fi 熱點、Matter 也不必斷線。完整依據：[V3.3 驗證報告](docs/verification/V3.3.md)。

@@ -1,4 +1,15 @@
 menu "WO30109 新風控制器"
+    choice FA_BOARD
+        prompt "板子版本"
+        default FA_BOARD_V33
+        help
+            V3.3 起 DI 腳位改了（與 NFC I2C 一起重排），並多了 NFC（U6 ST25DV04KC）。
+        config FA_BOARD_V33
+            bool "V3.3（DI＋NFC）"
+        config FA_BOARD_V32
+            bool "V3.2（DI，沒有 NFC）"
+    endchoice
+
     config FA_RELAY_PWM_HOLD
         bool "繼電器 PWM 降壓保持（吸合後改 PWM，省 12V 電流）"
         default y
