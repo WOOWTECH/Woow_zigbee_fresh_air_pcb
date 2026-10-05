@@ -24,6 +24,7 @@
 #include "fa_coil.h"
 #include "fa_ev1527.h"
 #include "fa_io.h"
+#include "fa_led.h"
 #include "fa_nfc_port.h"
 #include "fa_relays.h"
 #include "fa_remotes.h"
@@ -404,6 +405,10 @@ static void nfc_get_status(fa_nfc_status_t *st)
 
 static void nfc_learn(void) { s_learn_until_us = esp_timer_get_time() + 20 * 1000000LL; }
 static void nfc_identify(void) { s_identify_until_us = esp_timer_get_time() + 5 * 1000000LL; }
+static void net_identify(uint16_t seconds)
+{
+    s_identify_until_us = seconds ? esp_timer_get_time() + seconds * 1000000LL : 0;
+}
 static void factory_reset(void);
 static void nfc_factory_reset(void) { factory_reset(); }
 #endif
@@ -431,12 +436,14 @@ static void factory_reset(void)
 
 static bool led_pattern(uint32_t t, uint32_t held)
 {
-    if (held >= FA_BTN_VLONG_MIN) return true;                             /* 按住 ≥10s：恆亮＝放開就重置 */
-    if (held >= FA_BTN_LONG_MIN) return (t / 100) % 2;                     /* 3–8s：快閃＝放開進學習 */
-    if (s_learn_until_us && esp_timer_get_time() < s_learn_until_us) return (t / 100) % 2;
-    if (s_identify_until_us && esp_timer_get_time() < s_identify_until_us) return (t / 50) % 2;   /* NFC 找裝置 */
-    if (!fa_net_joined()) return (t / 500) % 2;                         /* 尚未入網：慢閃 */
-    return true;                                                           /* 已入網：恆亮 */
+    int64_t now = esp_timer_get_time();
+    fa_led_in_t in = {
+        .held_ms = held,
+        .learning = s_learn_until_us && now < s_learn_until_us,
+        .identifying = s_identify_until_us && now < s_identify_until_us,   /* Matter Identify 或 NFC 找裝置 */
+        .net = !fa_net_commissioned() ? FA_LED_NET_UNPAIRED : fa_net_joined() ? FA_LED_NET_ONLINE : FA_LED_NET_OFFLINE,
+    };
+    return fa_led_level(&in, t);
 }
 
 static void ui_task(void *arg)
@@ -543,7 +550,8 @@ void app_main(void)
     fa_nfc_port_start(PIN_NFC_SDA, PIN_NFC_SCL, &nfc_cb);
 #endif
     {
-        static const fa_net_cb_t net_cb = {.on_set = net_on_set, .on_cfg = net_on_cfg};
+        static const fa_net_cb_t net_cb = {.on_set = net_on_set, .on_cfg = net_on_cfg,
+                                              .identify = net_identify};
         xSemaphoreTake(s_lock, portMAX_DELAY);
         fa_io_cfg_t cfg_now = s_io.cfg;
         xSemaphoreGive(s_lock);

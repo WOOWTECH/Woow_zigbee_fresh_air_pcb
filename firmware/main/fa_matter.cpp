@@ -122,7 +122,15 @@ static esp_err_t on_attr(attribute::callback_type_t type, uint16_t ep, uint32_t 
 
 static esp_err_t on_identify(identification::callback_type_t type, uint16_t ep, uint8_t effect, uint8_t variant, void *priv)
 {
+    /* START：IdentifyTime 開始倒數（esp-matter 不給秒數，給上限 120s，STOP 時會停）；EFFECT：TriggerEffect 閃一下（3s） */
     ESP_LOGI(TAG, "Identify：endpoint %u，type %d，effect %u", ep, (int)type, effect);
+    if (!s_cb.identify) return ESP_OK;
+    switch (type) {
+    case identification::START:  s_cb.identify(120); break;
+    case identification::STOP:   s_cb.identify(0); break;
+    case identification::EFFECT: s_cb.identify(effect == chip::to_underlying(Identify::EffectIdentifierEnum::kStopEffect) ? 0 : 3); break;
+    default: break;
+    }
     return ESP_OK;
 }
 
@@ -206,6 +214,7 @@ extern "C" void fa_net_report_cfg(const fa_io_cfg_t *cfg)
 }
 
 extern "C" bool fa_net_joined(void) { return s_commissioned && s_net_up; }
+extern "C" bool fa_net_commissioned(void) { return s_commissioned; }
 
 extern "C" void fa_net_factory_reset(void)
 {

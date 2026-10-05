@@ -9,6 +9,7 @@
 #include "fa_sha256.h"
 #include "fa_nfc.h"
 #include "fa_modes.h"
+#include "fa_led.h"
 #include <string.h>
 
 int ul_fail, ul_run;
@@ -562,6 +563,42 @@ TEST(modes_jog_off_preset_shows_nearest)
     c.jog_ms[0] = 3600000; CHECK_EQ(fa_sel_get(&c, 0, FA_SEL_JOG), 10);
 }
 
+/* ---------------- 狀態燈 ---------------- */
+static int led_on_ms(const fa_led_in_t *in, uint32_t from, uint32_t len)
+{
+    int n = 0;
+    for (uint32_t t = from; t < from + len; t++) n += fa_led_level(in, t);
+    return n;
+}
+
+TEST(led_net_states)
+{
+    fa_led_in_t in = {0};
+    in.net = FA_LED_NET_ONLINE;
+    CHECK_EQ(led_on_ms(&in, 0, 2000), 2000);                      /* 恆亮 */
+    in.net = FA_LED_NET_UNPAIRED;
+    CHECK_EQ(led_on_ms(&in, 0, 2000), 1000);                      /* 慢閃：半亮半滅 */
+    CHECK(!fa_led_level(&in, 0) && fa_led_level(&in, 500));
+    in.net = FA_LED_NET_OFFLINE;                                  /* 兩短一長：150+150+600 */
+    CHECK_EQ(led_on_ms(&in, 0, FA_LED_BEACON_PERIOD_MS), 900);
+    CHECK(fa_led_level(&in, 0) && !fa_led_level(&in, 200) && fa_led_level(&in, 400));
+    CHECK(fa_led_level(&in, 1200) && !fa_led_level(&in, 1500));
+    CHECK_EQ(led_on_ms(&in, 2000, 2000), 900);                    /* 週期重複 */
+}
+
+TEST(led_priority_button_learn_identify_over_net)
+{
+    fa_led_in_t in = {.net = FA_LED_NET_ONLINE, .identifying = true};
+    CHECK_EQ(led_on_ms(&in, 0, 1000), 500);                       /* Identify 蓋過恆亮 */
+    CHECK(fa_led_level(&in, 50) && !fa_led_level(&in, 100));      /* 50ms 一跳 */
+    in.learning = true;
+    CHECK(fa_led_level(&in, 100) && !fa_led_level(&in, 200));     /* 學習 100ms 一跳，蓋過 Identify */
+    in.held_ms = 3000;
+    CHECK(!fa_led_level(&in, 0) && fa_led_level(&in, 100));
+    in.held_ms = 10000;
+    CHECK_EQ(led_on_ms(&in, 0, 1000), 1000);                      /* 放開就重置：恆亮 */
+}
+
 int main(void)
 {
     RUN(mode_from_dip);
@@ -604,6 +641,8 @@ int main(void)
     RUN(modes_counts_labels_and_bounds);
     RUN(modes_roundtrip_and_reject);
     RUN(modes_jog_off_preset_shows_nearest);
+    RUN(led_net_states);
+    RUN(led_priority_button_learn_identify_over_net);
     printf("%d tests, %d failures\n", ul_run, ul_fail);
     return ul_fail ? 1 : 0;
 }
