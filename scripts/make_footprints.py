@@ -38,6 +38,43 @@ fp('TerminalBlock_Pluggable_1x08_P5.08mm_Horizontal','Pluggable terminal header 
 # 外形取 3.5mm 直角插拔座常見尺寸（如 KF2EDGR-3.5-07P／15EDGRC-3.5-07P：孔 1.2、深約 7mm），下單前要對實際料號核對
 pads=[pad_th(1,-10.5,0,2.0,1.2,'rect')]+[pad_th(n,-10.5+3.5*(n-1),0,2.0,1.2) for n in range(2,8)]
 fp('TerminalBlock_Pluggable_1x07_P3.50mm_Horizontal','Pluggable terminal header 7P 3.50mm right-angle (e.g. KF2EDGR-3.5-07P), holes 1.2mm; body outline UNVERIFIED',(-12.5,-7.2,12.5,2.0),(-12.8,-7.5,12.8,2.3),'through_hole',pads)
+# NFC 印刷線圈（V3.3，ST25DV04KC 用）：正面矩形螺旋，最內圈端點經 THT 焊盤（當過孔）走背面拉到線圈外。
+# net tie（"1, 2"）：線圈銅箔合法連接兩個焊盤（電感在直流是短路）。電感用 scripts/nfc_coil.py 計算。
+# 背面跨線不畫在封裝裡：封裝圖形不算連接（內外兩個「2」會被 DRC 判成未連線），由 PCB 腳本畫成真正的走線；
+# 所以禁布區允許走線（禁鋪銅、過孔），別的網路由佈線器擋在外面。
+def nfc_coil(W, H, n, w, s, name):
+    pth = w + s; segs = []
+    def ln(a, b, layer): return f'\t(fp_line (start {a[0]:.3f} {a[1]:.3f}) (end {b[0]:.3f} {b[1]:.3f}) (stroke (width {w}) (type solid)) (layer "{layer}") (uuid "{U()}"))\n'
+    pts = []
+    for k in range(n):
+        a = k * pth
+        xl, xr, yt, yb = -W/2 + w/2 + a, W/2 - w/2 - a, -H/2 + w/2 + a, H/2 - w/2 - a
+        if k == 0: pts.append((xl, yb))
+        pts += [(xl, yt), (xr, yt), (xr, yb), (xl + pth, yb)]
+    pad_y = H/2 + 1.0
+    body = ln((pts[0][0], pad_y), pts[0], "F.Cu")
+    body += ''.join(ln(pts[i], pts[i + 1], "F.Cu") for i in range(len(pts) - 1))
+    # 最內圈終點往中央空白斜拉 0.7mm 再放焊盤：直接放在 (xl+p, yb)，0.6mm 焊盤會碰到左邊與下面兩圈（中心距只有 0.4）
+    end = (pts[-1][0] + 0.7, pts[-1][1] - 0.7)
+    body += ln(pts[-1], end, "F.Cu")
+    body += f'\t(fp_line (start {end[0]:.3f} {end[1]:.3f}) (end {end[0]:.3f} {pad_y:.3f}) (stroke (width {w}) (type dash)) (layer "B.Fab") (uuid "{U()}"))\n'   # 跨線位置（B.Fab 示意）
+    pads = [pad_smd(1, round(pts[0][0], 3), pad_y, 0.6, 0.6),
+            f'\t(pad "2" thru_hole circle (at {end[0]:.3f} {end[1]:.3f}) (size 0.6 0.6) (drill 0.3) (layers "*.Cu") (remove_unused_layers no) (uuid "{U()}"))\n',
+            f'\t(pad "2" thru_hole circle (at {end[0]:.3f} {pad_y:.3f}) (size 0.6 0.6) (drill 0.3) (layers "*.Cu") (remove_unused_layers no) (uuid "{U()}"))\n']
+    m = 0.5                                                        # 禁布區外擴：別的銅、鋪銅、過孔都不准進線圈
+    keep = (f'\t(zone (net 0) (net_name "") (layers "F.Cu" "B.Cu") (uuid "{U()}") (name "NFC_KEEPOUT") (hatch edge 0.5) '
+            f'(connect_pads (clearance 0)) (min_thickness 0.25) (filled_areas_thickness no) (keepout (tracks allowed) '
+            f'(vias not_allowed) (pads allowed) (copperpour not_allowed) (footprints allowed)) (fill (thermal_gap 0.5) '
+            f'(thermal_bridge_width 0.5)) (polygon (pts (xy {-W/2-m:.2f} {-H/2-m:.2f}) (xy {W/2+m:.2f} {-H/2-m:.2f}) '
+            f'(xy {W/2+m:.2f} {H/2+m:.2f}) (xy {-W/2-m:.2f} {H/2+m:.2f}))))\n')
+    silk = f'\t(fp_text user "NFC" (at 0 0) (layer "F.SilkS") (uuid "{U()}") (effects (font (size 1.5 1.5) (thickness 0.2))))\n'
+    tie = '\t(net_tie_pad_groups "1, 2")\n'
+    fp(name, f'NFC printed coil {W}x{H}mm {n} turns {w}/{s}mm (13.56MHz, ST25DV04KC Ctun 28.5pF + external tuning cap); net tie 1-2',
+       (-W/2, -H/2, W/2, H/2), (-W/2 - m - 0.1, -H/2 - m - 0.1, W/2 + m + 0.1, pad_y + 0.6), 'smd', pads, tie + body + keep + silk)
+    return pts, end, pad_y
+
+
+nfc_coil(14.9, 14.6, 8, 0.2, 0.2, 'NFC_Coil_14.9x14.6mm_8T')
 # 6x6 輕觸開關 SMD（ZX-QC66-4.3TP）：1,1 / 2,2
 pads=[pad_smd(1,-4.25,-2.25,2.1,1.4),pad_smd(1,4.25,-2.25,2.1,1.4),pad_smd(2,-4.25,2.25,2.1,1.4),pad_smd(2,4.25,2.25,2.1,1.4)]
 fp('SW_Push_6x6mm_SMD_ZX-QC66','6x6mm SMD tactile switch (Megastar ZX-QC66-4.3TP, JLC C7470150)',(-3,-3,3,3),(-5.4,-3.0,5.4,3.0),'smd',pads)
