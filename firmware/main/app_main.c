@@ -23,6 +23,7 @@
 #include "fa_button.h"
 #include "fa_coil.h"
 #include "fa_ev1527.h"
+#include "fa_io.h"
 #include "fa_relays.h"
 #include "fa_remotes.h"
 #include "fa_zigbee.h"
@@ -30,10 +31,12 @@
 static const char *TAG = "fa";
 
 static const gpio_num_t RELAY_PIN[FA_CH] = {PIN_RELAY_1, PIN_RELAY_2, PIN_RELAY_3, PIN_RELAY_4};
+static const gpio_num_t DI_PIN[FA_CH] = {PIN_DI_1, PIN_DI_2, PIN_DI_3, PIN_DI_4};
 
 static fa_relays_t       s_relays;
 static fa_remotes_t      s_remotes;
-static SemaphoreHandle_t s_lock;           /* 保護 s_relays / s_remotes */
+static fa_io_t           s_io;             /* DI／DO 模式與狀態（V3.2） */
+static SemaphoreHandle_t s_lock;           /* 保護 s_relays / s_remotes / s_io */
 static QueueHandle_t     s_relay_q;        /* fa_action_t；ch = 0xFF 表示「這批結束，請同步」 */
 static QueueHandle_t     s_rf_q;           /* rf_edge_t */
 static volatile int64_t  s_learn_until_us; /* 學習模式到期時間；0 = 關 */
@@ -75,12 +78,53 @@ static int relay_set(uint8_t ch, bool on)
     return n;
 }
 
-static int relay_toggle(uint8_t ch)
+/* ---------------- DI／DO（V3.2）：接線 DI 與遙控器 4 鍵 ---------------- */
+static void io_post(int n, uint8_t ch)
 {
-    xSemaphoreTake(s_lock, portMAX_DELAY);
-    bool on = !s_relays.on[ch];
-    xSemaphoreGive(s_lock);
-    return relay_set(ch, on);
+    if (n == FA_ERR_LIMIT) ESP_LOGW(TAG, "DI%d：已達同時吸合上限 %d", ch + 1, CONFIG_FA_MAX_RELAYS_ON);
+}
+
+static void io_cfg_default(fa_io_cfg_t *c)
+{
+#if CONFIG_FA_PRESET_FAN2
+    fa_io_default(c, FA_MODE_FAN2);
+#elif CONFIG_FA_PRESET_4CH
+    fa_io_default(c, FA_MODE_4CH);
+#elif CONFIG_FA_PRESET_SEL4
+    fa_io_default(c, FA_MODE_SEL4);
+#else
+    fa_io_default(c, FA_MODE_FAN3);
+#endif
+    for (int k = 0; k < FA_CH; k++) {
+#if CONFIG_FA_DI_DEFAULT_PRESS
+        c->di_mode[k] = FA_DI_PRESS;
+#elif CONFIG_FA_DI_DEFAULT_OFF
+        c->di_mode[k] = FA_DI_OFF;
+#endif
+        c->jog_ms[k] = CONFIG_FA_JOG_MS;
+    }
+}
+
+/* 設定存 NVS（"fa"/"io_cfg"）；讀不到或內容不合法就用出廠預設。V4（Matter）由 HA／維護網頁寫入 */
+static void io_cfg_load(fa_io_cfg_t *c)
+{
+    nvs_handle_t h;
+    size_t len = sizeof *c;
+    bool ok = false;
+    if (nvs_open("fa", NVS_READONLY, &h) == ESP_OK) {
+        ok = nvs_get_blob(h, "io_cfg", c, &len) == ESP_OK && len == sizeof *c && fa_io_cfg_valid(c);
+        nvs_close(h);
+    }
+    if (!ok) io_cfg_default(c);
+}
+
+static void io_cfg_erase(void)
+{
+    nvs_handle_t h;
+    if (nvs_open("fa", NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_erase_key(h, "io_cfg");
+    nvs_commit(h);
+    nvs_close(h);
 }
 
 /* ---------------- 線圈驅動：全壓吸合 → PWM 降壓保持 ---------------- */
@@ -230,14 +274,15 @@ static void rf_task(void *arg)
         uint32_t code;
         if (!fa_ev1527_feed(&dec, e.level, e.dur_us, &code)) continue;
         uint32_t t = now_ms();
-        if (code == last_code && t - last_ms < 600) { last_ms = t; continue; }   /* 同一次按壓的重送 */
-        last_code = code;
-        last_ms = t;
         uint32_t addr = fa_ev1527_addr(code);
         uint8_t  key = fa_ev1527_key(code);
-        ESP_LOGI(TAG, "433：位址 0x%05lx 鍵 0x%x", (unsigned long)addr, key);
+        bool repeat = code == last_code && t - last_ms < 600;          /* 同一次按壓的重送 */
+        last_code = code;
+        last_ms = t;
+        if (!repeat) ESP_LOGI(TAG, "433：位址 0x%05lx 鍵 0x%x", (unsigned long)addr, key);
 
         if (s_learn_until_us && esp_timer_get_time() < s_learn_until_us) {
+            if (repeat) continue;
             xSemaphoreTake(s_lock, portMAX_DELAY);
             fa_remotes_add(&s_remotes, addr);
             xSemaphoreGive(s_lock);
@@ -246,23 +291,28 @@ static void rf_task(void *arg)
             ESP_LOGI(TAG, "學習完成：0x%05lx（共 %d 支）", (unsigned long)addr, s_remotes.n);
             continue;
         }
+        /* 遙控器第 k 鍵＝DI k 的分身：每一幀都送進去（按住判定靠持續收到幀，放開由 fa_io_tick 逾時判定） */
+        int ch = fa_remote_key_to_channel(key);
+        fa_action_t a[8];
         xSemaphoreTake(s_lock, portMAX_DELAY);
         bool known = fa_remotes_has(&s_remotes, addr);
+        int n = (known && ch >= 0) ? fa_io_rf(&s_io, &s_relays, (uint8_t)ch, t, a, 8) : 0;
         xSemaphoreGive(s_lock);
-        int ch = fa_remote_key_to_channel(key);
-        if (known && ch >= 0) relay_toggle((uint8_t)ch);
+        post_actions(a, n);
+        io_post(n, (uint8_t)ch);
     }
 }
 
 /* ---------------- 按鍵、燈號 ---------------- */
 static void factory_reset(void)
 {
-    ESP_LOGW(TAG, "恢復出廠：全部繼電器關、清除遙控器、Zigbee 離網");
+    ESP_LOGW(TAG, "恢復出廠：全部繼電器關、清除遙控器與 DI/DO 設定、Zigbee 離網");
     apply(fa_relays_all_off);
     xSemaphoreTake(s_lock, portMAX_DELAY);
     fa_remotes_init(&s_remotes);
     xSemaphoreGive(s_lock);
     remotes_save();
+    io_cfg_erase();
     vTaskDelay(pdMS_TO_TICKS(300));
     fa_zigbee_factory_reset();
 }
@@ -296,6 +346,22 @@ static void ui_task(void *arg)
         default:
             break;
         }
+        for (uint8_t k = 0; k < FA_CH; k++) {                     /* 接線 DI：每 10ms 取樣，fa_io 內部防彈跳 */
+            fa_action_t a[8];
+            bool closed = gpio_get_level(DI_PIN[k]) == 0;
+            xSemaphoreTake(s_lock, portMAX_DELAY);
+            int n = fa_io_wired(&s_io, &s_relays, k, closed, t, a, 8);
+            xSemaphoreGive(s_lock);
+            post_actions(a, n);
+            io_post(n, k);
+        }
+        {                                                          /* 遙控器放開判定、點動到時 */
+            fa_action_t a[8];
+            xSemaphoreTake(s_lock, portMAX_DELAY);
+            int n = fa_io_tick(&s_io, &s_relays, t, a, 8);
+            xSemaphoreGive(s_lock);
+            post_actions(a, n);
+        }
         gpio_set_level(PIN_LED, led_pattern(t, fa_button_held_ms(&btn, t)));
         vTaskDelay(pdMS_TO_TICKS(10));
     }
@@ -309,7 +375,8 @@ static void gpio_setup(void)
     for (int i = 0; i < FA_CH; i++) gpio_set_level(RELAY_PIN[i], 0);
     gpio_config(&out);
     gpio_config_t in = {.mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE,
-                        .pin_bit_mask = (1ULL << PIN_BUTTON) | (1ULL << PIN_MODE_BIT0) | (1ULL << PIN_MODE_BIT1)};
+                        .pin_bit_mask = (1ULL << PIN_BUTTON) | (1ULL << PIN_DI_1) | (1ULL << PIN_DI_2)
+                                        | (1ULL << PIN_DI_3) | (1ULL << PIN_DI_4)};   /* DI：內建上拉＋板上 10nF */
     gpio_config(&in);
     gpio_config_t rf = {.mode = GPIO_MODE_INPUT, .intr_type = GPIO_INTR_ANYEDGE, .pin_bit_mask = 1ULL << PIN_RF_DATA};
     gpio_config(&rf);
@@ -330,10 +397,15 @@ void app_main(void)
     s_relay_q = xQueueCreate(32, sizeof(fa_action_t));
     s_rf_q = xQueueCreate(256, sizeof(rf_edge_t));
 
-    fa_mode_t mode = fa_mode_from_dip(gpio_get_level(PIN_MODE_BIT1) == 0, gpio_get_level(PIN_MODE_BIT0) == 0);
-    fa_relays_init(&s_relays, mode, CONFIG_FA_MAX_RELAYS_ON, CONFIG_FA_INTERLOCK_DEAD_MS);
-    static const char *MODE_NAME[] = {"4 路獨立", "三段風速＋1 路", "兩段風速＋2 路", "4 路互斥"};
-    ESP_LOGI(TAG, "模式 %d：%s；同時吸合上限 %d；Zigbee 發射 %ddBm", mode, MODE_NAME[mode],
+    fa_io_cfg_t cfg;
+    io_cfg_load(&cfg);
+    fa_io_init(&s_io, &cfg);
+    fa_relays_init_group(&s_relays, fa_io_interlock_mask(&cfg), CONFIG_FA_MAX_RELAYS_ON, CONFIG_FA_INTERLOCK_DEAD_MS);
+    static const char *DI_NAME[] = {"全關", "按一次", "持續"}, *DO_NAME[] = {"自鎖", "點動", "互鎖"};
+    for (int k = 0; k < FA_CH; k++)
+        ESP_LOGI(TAG, "K%d：DI %s／DO %s（點動 %lums）", k + 1, DI_NAME[cfg.di_mode[k]], DO_NAME[cfg.do_mode[k]],
+                 (unsigned long)cfg.jog_ms[k]);
+    ESP_LOGI(TAG, "互鎖群組 0x%x；同時吸合上限 %d；Zigbee 發射 %ddBm", fa_io_interlock_mask(&cfg),
              CONFIG_FA_MAX_RELAYS_ON, CONFIG_FA_ZB_TX_POWER);
     remotes_load();
 
