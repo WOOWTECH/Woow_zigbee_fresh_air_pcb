@@ -20,7 +20,8 @@ from upgrade_v30_pcb import load_fp
 OUT = os.environ.get("OUT_PCB", os.path.join(PRJ, "WO30109_FreshAir.kicad_pcb"))
 BASE_REF = os.environ.get("BASE_REF", "f64c97b")     # V3.1 PCB（commit「hw: V3.1 433 匹配重新選值…」）
 REL = "hardware/WO30109_FreshAir/WO30109_FreshAir.kicad_pcb"
-EXT = 10.0                                             # 上緣加長（mm）
+EXT = 10.0                                             # 上緣加長（mm），只加在 J5 那一段
+NOTCH_GX = -5.8                                        # L 形轉角（Gerber x）：J5 courtyard 右緣 −5.9、P1 courtyard 左緣 −5.7
 OLD_TOP, NEW_TOP = 83.08, 83.08 + EXT                  # Gerber y
 NEW = ["J5", "U5", "R23"] + [f"R{14 + k}" for k in range(1, 5)] + [f"C{17 + k}" for k in range(1, 5)]
 # 被新零件佔到、要拆掉重佈的既有銅：S1 專用的 GND 支線、P2 的 +3V3 供電（沿 y≈102 穿過 U5 位置）、擋到的縫合過孔
@@ -42,13 +43,16 @@ def step_place():
     for ref in NEW:
         fp = lib_fp[ref]; fp.SetReference(ref); fp.SetValue(P[ref]["value"]); set_lcsc(fp, P[ref]["lcsc"] or "")
         b.Add(fp); fps[ref] = fp
-    # 板框：上緣往上 10mm
-    for d in b.GetDrawings():
-        if d.GetLayerName() != "Edge.Cuts": continue
-        for get, set_ in ((d.GetStart, d.SetStart), (d.GetEnd, d.SetEnd)):
-            p = get()
-            if abs(pcbnew.ToMM(p.y) - ky(OLD_TOP)) < 0.01:
-                set_(V(pcbnew.ToMM(p.x), ky(NEW_TOP)))
+    # 板框：只有 J5 那一段（左邊到 NOTCH_GX）往上 10mm，形成 L 形。P1（AC IN）是開口朝板邊的插拔座，
+    # 插頭與 230V 電線會伸出原板緣；那裡若有板子，插頭就壓在低壓 GND 鋪銅上方（空氣間隙遠小於 6.4mm）
+    for d in list(b.GetDrawings()):
+        if d.GetLayerName() == "Edge.Cuts" and abs(pcbnew.ToMM(d.GetStart().y) - ky(OLD_TOP)) < 0.01 \
+                and abs(pcbnew.ToMM(d.GetEnd().y) - ky(OLD_TOP)) < 0.01:
+            b.Remove(d)
+    pts = [(-31.7, OLD_TOP), (-31.7, NEW_TOP), (NOTCH_GX, NEW_TOP), (NOTCH_GX, OLD_TOP), (31.7, OLD_TOP)]
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        seg = pcbnew.PCB_SHAPE(b); seg.SetShape(pcbnew.SHAPE_T_SEGMENT); seg.SetLayer(pcbnew.Edge_Cuts)
+        seg.SetStart(V(kx(x0), ky(y0))); seg.SetEnd(V(kx(x1), ky(y1))); seg.SetWidth(pcbnew.FromMM(0.05)); b.Add(seg)
     # J5：開口朝板邊，courtyard 上緣貼新板邊；Pin1（+12V）在左
     place(fps["J5"], center=(-18.7, NEW_TOP - 7.5), rot=0, bottom=False)
     fps["J5"].SetExcludedFromPosFiles(True)                          # 插拔座手焊（同 P1、P3）
