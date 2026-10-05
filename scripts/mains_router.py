@@ -24,8 +24,11 @@ def set_board(height):
 
 
 def board_height(board):
-    bb = board.GetBoardEdgesBoundingBox()
-    return round(pcbnew.ToMM(bb.GetHeight()), 3)
+    """板框線段端點的 Y 範圍（GetBoardEdgesBoundingBox 會把板邊線寬 0.05 算進去，格點因此偏 0.05mm，
+    板邊 0.5mm 的遮罩就少擋一格，走線會貼到 0.48mm）"""
+    ys = [pcbnew.ToMM(p.y) for d in board.GetDrawings() if d.GetLayer() == pcbnew.Edge_Cuts
+          for p in (d.GetStart(), d.GetEnd())]
+    return round(max(ys) - min(ys), 3)
 
 
 def to_g(v):                     # KiCad VECTOR2I -> gerber mm

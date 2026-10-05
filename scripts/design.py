@@ -5,6 +5,7 @@
   * VERSION="1.3"：照原設計 V1.3（2025-08-28 PDF 原理圖）重繪，不改任何電路。
   * VERSION="2.0"：改版，差異寫在 CHANGES。
   * VERSION="3.0"：STM32＋Tuya ZS3L＋EPA09-4D → ESP32-C6 單晶片（Zigbee 3.0）＋SYN480R 433MHz 接收，差異寫在 CHANGES。
+  * VERSION="3.4"：照外殼 4-02-3（88×72×59 導軌盒）改回原板框 63.4×83.08：J5 2.54mm、NFC 外接 FPC 天線（J6）、P2 改測試點、B1 改小。
   * VERSION="3.3"：加 NFC（U6 ST25DV04KC＋板上線圈 L5），J5 改到左側板邊，左半段再加高。
   * VERSION="3.2"：加 4 路光耦 DI（J5、U5 TLP290-4）、拿掉指撥 S1，板子上緣加長 10mm。
   * VERSION="3.1"：只換值不改板：433 匹配 C15/C16/L3/L4 重新選值、D1–D4 改 Schottky B5819W（配合韌體 PWM 保持）。
@@ -24,6 +25,7 @@ def build(version="2.0"):
     v31 = v3 and tuple(map(int, version.split("."))) >= (3, 1)   # V3.1：433 匹配值、續流 Schottky
     v32 = v3 and tuple(map(int, version.split("."))) >= (3, 2)   # V3.2：4 路光耦 DI、拿掉指撥
     v33 = v3 and tuple(map(int, version.split("."))) >= (3, 3)   # V3.3：NFC（ST25DV04KC＋板上線圈）
+    v34 = v3 and tuple(map(int, version.split("."))) >= (3, 4)   # V3.4：照外殼 4-02-3 改回原板框（DI 2.54mm、NFC 外接天線）
     v2 = version.startswith("2") or v3          # V3.0 沿用 V2.0 的市電、電源、繼電器
 
     # ---------------- 市電輸入 ----------------
@@ -111,11 +113,15 @@ def build(version="2.0"):
             {"1": "RF_ANT"})
 
         # ---------------- 使用者介面 ----------------
-        add("B1", "Switch:SW_Push", "ZX-QC66-4.3TP", "WOOW:SW_Push_6x6mm_SMD_ZX-QC66", "C7470150", {"1": "GND", "2": "BOOT"})
+        if v34:   # 原 6×6 按鍵放不下（上緣讓給 J5）：改 3.9×3.0（基礎料），放在 J5 後方＝開蓋才按得到的維修鍵
+            add("B1", "Switch:SW_Push", "TS-1088-AR02016", "WOOW:SW_SPST_TS-1088", "C720477", {"1": "GND", "2": "BOOT"})
+        else:
+            add("B1", "Switch:SW_Push", "ZX-QC66-4.3TP", "WOOW:SW_Push_6x6mm_SMD_ZX-QC66", "C7470150", {"1": "GND", "2": "BOOT"})
         if not v32:
             add("S1", "Switch:SW_DIP_x02", "DIP 2P", "Button_Switch_SMD:SW_DIP_SPSTx02_Slide_Copal_CHS-02B_W7.62mm_P1.27mm", "C7421516",
                 {"1": "Mode_bit1", "2": "Mode_bit0", "3": "GND", "4": "GND"})
-        add("P2", "Connector_Generic:Conn_02x03_Odd_Even", "PROG", "Connector_PinHeader_2.54mm:PinHeader_2x03_P2.54mm_Vertical", "",
+        add("P2", "Connector_Generic:Conn_02x03_Odd_Even", "PROG",
+            "WOOW:ProgPads_2x03_P2.54mm" if v34 else "Connector_PinHeader_2.54mm:PinHeader_2x03_P2.54mm_Vertical", "",
             {"1": "+3V3", "2": "GND", "3": "U0TXD", "4": "U0RXD", "5": "EN", "6": "BOOT"})   # 1×6 直排會壓到 H3
     else:
         # ---------------- STM32F103C8T6 ----------------
@@ -171,7 +177,10 @@ def build(version="2.0"):
         #   （TLP290-4 是交流輸入光耦，LED 反向並聯，不分極性）。R15–R18 3.3k：5V 時 1.15mA、24V 時 6.9mA／0.16W（1206 0.25W）
         #   輸出：集極接 ESP32 GPIO（韌體開內建上拉 ~45k）＋10nF 到地（τ≈0.45ms，其餘由韌體防彈跳），接通＝低電位。
         #   不用外部上拉：光耦導通只需吸 ~73µA，CTR 綽綽有餘；10nF 讓這條約 5cm 的線在高頻是低阻抗、不易拾取雜訊
-        add("J5", "Connector_Generic:Conn_01x07", "DI 12V/IN1-4/COM/GND", "WOOW:TerminalBlock_Pluggable_1x07_P3.50mm_Horizontal", "",
+        # V3.4：原板框內和 P1（市電）共用上方開窗，要離 P1 6.4mm → 3.5mm 7P 放不下，改 2.54mm（KF2EDGR-2.54-7P）
+        add("J5", "Connector_Generic:Conn_01x07", "DI 12V/IN1-4/COM/GND",
+            "WOOW:TerminalBlock_Pluggable_1x07_P2.54mm_Horizontal" if v34 else "WOOW:TerminalBlock_Pluggable_1x07_P3.50mm_Horizontal",
+            "C577599" if v34 else "",
             {"1": "+12V_DI", "2": "DI_IN1", "3": "DI_IN2", "4": "DI_IN3", "5": "DI_IN4", "6": "DI_COM", "7": "GND"})
         add("R23", "Device:R", "1.5k", "Resistor_SMD:R_1206_3216Metric", "C26030", {"1": "+12V", "2": "+12V_DI"})
         opto = {}
@@ -188,8 +197,14 @@ def build(version="2.0"):
         # 的下移）；C24 空位微調。GPO 不接：韌體每 50ms 輪詢 IT_STS_Dyn。V_EH 不用（預設關閉）。
         add("U6", "WOOW:ST25DV04KC", "ST25DV04KC-IE6S3", "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", "C3304276",
             {"1": None, "2": "NFC_AC0", "3": "NFC_AC1", "4": "GND", "5": "NFC_SDA", "6": "NFC_SCL", "7": None, "8": "+3V3"})
-        add("L5", "Device:L", "NFC coil 1.27uH", "WOOW:NFC_Coil_14.9x14.6mm_8T", "", {"1": "NFC_AC0", "2": "NFC_AC1"})
-        add("C22", "Device:C", "75pF C0G", C0603, "C1681", {"1": "NFC_AC0", "2": "NFC_AC1"})
+        if v34:   # 板子平躺在導軌盒底座、前蓋離板 >50mm：改用 FPC 天線貼前蓋內側，J6（JST SH 2P）接回來。
+                  # 調諧電容依天線電感決定（docs/verification/V3.4.md 表），C22／C24 預設不上件
+            add("J6", "Connector_Generic:Conn_01x02", "NFC ANT", "Connector_JST:JST_SH_BM02B-SRSS-TB_1x02-1MP_P1.00mm_Vertical",
+                "C160388", {"1": "NFC_AC0", "2": "NFC_AC1"})   # MP 固定腳不接
+            add("C22", "Device:C", "DNP tune", C0603, "", {"1": "NFC_AC0", "2": "NFC_AC1"})
+        else:
+            add("L5", "Device:L", "NFC coil 1.27uH", "WOOW:NFC_Coil_14.9x14.6mm_8T", "", {"1": "NFC_AC0", "2": "NFC_AC1"})
+            add("C22", "Device:C", "75pF C0G", C0603, "C1681", {"1": "NFC_AC0", "2": "NFC_AC1"})
         add("C24", "Device:C", "DNP trim", C0603, "", {"1": "NFC_AC0", "2": "NFC_AC1"})
         add("C23", "Device:C", "100nF", C0603, "C14663", {"1": "+3V3", "2": "GND"})
         add("R24", "Device:R", "10k", R0603, "C25804", {"1": "+3V3", "2": "NFC_SDA"})
@@ -224,6 +239,12 @@ MAINS = {"AC_L_IN", "AC_L", "AC_N", "DO_COM", "DO_1_NO", "DO_2_NO", "DO_3_NO", "
 POWER_FLAGS = ["+12V", "+3V3", "GND", "AC_L", "AC_N", "AC_L_IN"]
 
 CHANGES = {
+    "3.4": [
+        "板子改回原板框 63.4×83.08（外殼 4-02-3 導軌盒，固定孔 50×50）；V3.2／V3.3 加高的板子放不進",
+        "J5 改 KF2EDGR-2.54-7P（C577599），和 P1 同排、離市電 ≥6.4mm",
+        "NFC 板上線圈拿掉，改 J6（JST SH 2P，C160388）接 FPC 天線貼前蓋內側；C22／C24 依天線調諧",
+        "P2 排針改背面 2×3 燒錄測試點；B1 改 TS-1088（C720477）放 J5 後方",
+    ],
     "3.3": [
         "U6 ST25DV04KC（C3304276）＋L5 板上印刷線圈 14.9×14.6mm 8 圈 1.27µH＋C22 75pF（13.88MHz）＋C24 微調空位",
         "NFC I2C：SDA＝IO20、SCL＝IO19，各 10k 上拉；GPO 不接（韌體輪詢）。DI_1–4 改接 IO3／IO15／IO22／IO21（與 I2C 照左右順序排，不交叉）",

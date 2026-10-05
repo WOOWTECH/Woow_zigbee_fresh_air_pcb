@@ -23,7 +23,7 @@ BLOCKS = [
     ("繼電器", [r for k in range(1, 5) for r in (f"R{4+k}", f"R{8+k}", f"Q{k}", f"D{k}", f"K{k}")] + ["P3"], (240, 170)),
     ("DI 輸入（光耦隔離）", ["J5", "R23", "U5"] + [f"R{14+k}" for k in range(1, 5)]
      + [f"C{17+k}" for k in range(1, 5)], (25, 300)),
-    ("NFC 設定介面", ["U6", "L5", "C22", "C24", "C23", "R24", "R25"], (240, 300)),
+    ("NFC 設定介面", ["U6", "L5", "J6", "C22", "C24", "C23", "R24", "R25"], (240, 300)),
 ]
 BIG = {"U1": (55, 75) if VERSION < "3" else (45, 55), "U2": (45, 25), "U3": (55, 45), "RF1": (40, 35), "P3": (35, 40), "U4": (40, 25),
        "U5": (35, 35), "J5": (30, 30), "U6": (35, 25)}
@@ -55,7 +55,9 @@ def main():
             sch.components.add(lib_id=part["lib"], reference=ref, value=part["value"],
                                position=(snap(x + w / 2), snap(y + h / 2)), footprint=part["footprint"],
                                LCSC=part["lcsc"] or "")
-            if ref.startswith("H") or ref.startswith("TP") or ref.startswith("ANT") or ref in ("L5", "C24"):   # 固定孔、測試點、天線焊點：不進 BOM（與 PCB 一致）
+            if ref.startswith("H") or ref.startswith("TP") or ref.startswith("ANT") or ref in ("L5", "C24", "C22"):   # 固定孔、測試點、天線焊點：不進 BOM（與 PCB 一致）
+                sch.components.get(ref).in_bom = False
+            if part["footprint"] == "WOOW:ProgPads_2x03_P2.54mm":   # V3.4 起 P2 是測試點（PCB 也不進 BOM）
                 sch.components.get(ref).in_bom = False
             placed.add(ref)
             x += w + 8
