@@ -51,6 +51,9 @@ jobs:
           ngspice -b relay_driver.cir | tee ../out/spice_relay.txt | grep -iE "^(icoil_on|vg_on|vds_on|vds_peak|id1_peak|t_decay)"
           ngspice -b relay_no_diode.cir | grep -iE "^vds_peak" | tee -a ../out/spice_relay.txt
           ngspice -b led.cir | tee ../out/spice_led.txt | grep -E "^\(3.3"
+          ngspice -b relay_pwm_hold.cir | tee ../out/spice_pwm_hold.txt | grep -iE "^(i_pullin|isup_hold|vd_hold|vds_pk|t_release)"
+          # 守門：PWM 保持時 12V 端每顆 < 17mA（電源預算），Vds 峰值 < 20V
+          python3 -c "import re,sys; t=open('../out/spice_pwm_hold.txt').read(); g=lambda k: abs(float(re.search(k+r'\s*=\s*([0-9.e+-]+)',t).group(1))); i=g('isup_hold'); v=max(g('vds_pk_pwm'),g('vds_pk_off')); print('hold',i,'Vds',v); sys.exit(0 if i<0.017 and v<20 else 1)"
           # 守門：有續流二極體時 Vds 峰值必須 < Si2302 耐壓 20V
           python3 -c "import re,sys; v=float(re.search(r'vds_peak\s*=\s*([0-9.e+-]+)',open('../out/spice_relay.txt').read()).group(1)); print('Vds peak',v); sys.exit(0 if v<20 else 1)"
 
