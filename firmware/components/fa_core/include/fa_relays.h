@@ -26,11 +26,13 @@ typedef struct {
     bool      on[FA_CH];
     uint8_t   max_on;     /* 同時吸合上限（電源預算） */
     uint16_t  dead_ms;    /* 互鎖切換：斷開後多久才吸合新的一路 */
+    uint8_t   group;      /* 互鎖群組遮罩（V3.2 起由 DO 模式決定，見 fa_io；V3.1 以前由指撥模式決定） */
 } fa_relays_t;
 
 fa_mode_t fa_mode_from_dip(bool bit1, bool bit0);
 uint8_t   fa_mode_group_mask(fa_mode_t mode);          /* 互斥群組的通道位元遮罩 */
 void      fa_relays_init(fa_relays_t *r, fa_mode_t mode, uint8_t max_on, uint16_t dead_ms);
+void      fa_relays_init_group(fa_relays_t *r, uint8_t group_mask, uint8_t max_on, uint16_t dead_ms);
 /* 回傳動作數（>=0），或 FA_ERR_ARG / FA_ERR_LIMIT（狀態不變） */
 int       fa_relays_set(fa_relays_t *r, uint8_t ch, bool on, fa_action_t *out, int max_out);
 int       fa_relays_toggle(fa_relays_t *r, uint8_t ch, fa_action_t *out, int max_out);
