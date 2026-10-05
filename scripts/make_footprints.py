@@ -75,6 +75,18 @@ def nfc_coil(W, H, n, w, s, name):
 
 
 nfc_coil(14.9, 14.6, 8, 0.2, 0.2, 'NFC_Coil_14.9x14.6mm_8T')
+# V3.4（照外殼 4-02-3 改回原板框）：
+# 插拔式端子座 7P 2.54mm（KEFA KF2EDGR-2.54-7P，C577599）。規格書：本體寬 P×2.54+1.8＝19.58、深 8.1、孔 Φ1.4、
+# 孔排離本體後緣 1.2（開口在另一側，離孔排 6.9）。原點＝Pin4，開口朝 -Y（板邊），Pin1 在 -X
+pads=[pad_th(1,-7.62,0,2.0,1.4,'rect')]+[pad_th(n,-7.62+2.54*(n-1),0,2.0,1.4) for n in range(2,8)]
+fp('TerminalBlock_Pluggable_1x07_P2.54mm_Horizontal','Pluggable terminal header 7P 2.54mm right-angle (KEFA KF2EDGR-2.54-7P, JLC C577599), holes 1.4mm',(-9.79,-6.9,9.79,1.2),(-10.04,-7.15,10.04,1.45),'through_hole',pads)
+# 燒錄測試點 2×3、2.54mm（取代 P2 排針，放背面用探針治具燒錄；腳號同 Conn_02x03_Odd_Even）
+def pad_tp(n,x,y): return f'\t(pad "{n}" smd circle (at {x} {y}) (size 1.5 1.5) (layers "F.Cu" "F.Mask") (uuid "{U()}"))\n'
+pads=[pad_tp(n, -1.27 if n%2 else 1.27, -2.54+2.54*((n-1)//2)) for n in range(1,7)]
+fp('ProgPads_2x03_P2.54mm','Programming test pads 2x3 P2.54mm (pogo-pin jig; pin numbering as Conn_02x03_Odd_Even)',(-2.1,-3.35,2.1,3.35),(-2.3,-3.55,2.3,3.55),'smd',pads)
+# 輕觸開關 3.9×3.0（HYP TS-1088-AR02016，JLC 基礎料 C720477）：焊盤取自 JLC／EasyEDA 封裝 SW-SMD_L3.9-W3.0-P4.45
+pads=[pad_smd(1,-2.18,0,1.23,1.86),pad_smd(2,2.18,0,1.23,1.86)]
+fp('SW_SPST_TS-1088','SMD tactile switch 3.9x3.0mm (HYP TS-1088-AR02016, JLC C720477)',(-1.95,-1.5,1.95,1.5),(-3.05,-1.8,3.05,1.8),'smd',pads)
 # 6x6 輕觸開關 SMD（ZX-QC66-4.3TP）：1,1 / 2,2
 pads=[pad_smd(1,-4.25,-2.25,2.1,1.4),pad_smd(1,4.25,-2.25,2.1,1.4),pad_smd(2,-4.25,2.25,2.1,1.4),pad_smd(2,4.25,2.25,2.1,1.4)]
 fp('SW_Push_6x6mm_SMD_ZX-QC66','6x6mm SMD tactile switch (Megastar ZX-QC66-4.3TP, JLC C7470150)',(-3,-3,3,3),(-5.4,-3.0,5.4,3.0),'smd',pads)
