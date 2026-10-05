@@ -6,6 +6,9 @@
 #include "fa_remotes.h"
 #include "fa_coil.h"
 #include "fa_io.h"
+#include "fa_sha256.h"
+#include "fa_nfc.h"
+#include <string.h>
 
 int ul_fail, ul_run;
 
@@ -388,6 +391,118 @@ TEST(io_respects_max_on_limit)
     CHECK(!RL.on[3]);
 }
 
+/* ---------------- SHA-256／HMAC（標準向量）---------------- */
+static void hex(const uint8_t *b, size_t n, char *out) { for (size_t i = 0; i < n; i++) sprintf(out + 2 * i, "%02x", b[i]); }
+
+TEST(sha256_and_hmac_standard_vectors)
+{
+    uint8_t d[32]; char h[129];
+    fa_sha256("abc", 3, d); hex(d, 32, h);                                   /* FIPS 180-2 B.1 */
+    CHECK(strcmp(h, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") == 0);
+    fa_sha256("", 0, d); hex(d, 32, h);
+    CHECK(strcmp(h, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") == 0);
+    const char *m2 = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";   /* FIPS 180-2 B.2：兩個區塊 */
+    fa_sha256(m2, strlen(m2), d); hex(d, 32, h);
+    CHECK(strcmp(h, "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1") == 0);
+    const char *msg = "what do ya want for nothing?";                       /* RFC 4231 test case 2 */
+    fa_hmac_sha256((const uint8_t *)"Jefe", 4, msg, strlen(msg), d); hex(d, 32, h);
+    CHECK(strcmp(h, "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843") == 0);
+    uint8_t longkey[131]; memset(longkey, 0xaa, sizeof longkey);              /* RFC 4231 case 6：金鑰比區塊長 */
+    const char *m6 = "Test Using Larger Than Block-Size Key - Hash Key First";
+    fa_hmac_sha256(longkey, sizeof longkey, m6, strlen(m6), d); hex(d, 32, h);
+    CHECK(strcmp(h, "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54") == 0);
+    CHECK_EQ(fa_nfc_crc16((const uint8_t *)"123456789", 9), 0x29B1);          /* CRC-16/CCITT-FALSE 檢查值 */
+}
+
+/* ---------------- NFC 協定（與 tools/nfc_ref.py 同一組向量）---------------- */
+static fa_nfc_cfg_t vec_cfg(void)
+{
+    fa_nfc_cfg_t c; memset(&c, 0, sizeof c);
+    uint8_t di[4] = {2, 1, 0, 2}, dm[4] = {2, 2, 1, 0}; uint32_t jog[4] = {1000, 1000, 5000, 1000};
+    memcpy(c.io.di_mode, di, 4); memcpy(c.io.do_mode, dm, 4); memcpy(c.io.jog_ms, jog, sizeof jog);
+    strcpy(c.name, "\xe5\xae\xa2\xe5\xbb\xb3\xe6\x96\xb0\xe9\xa2\xa8");   /* 「客廳新風」UTF-8 */
+    c.n_remotes = 2; c.remotes[0] = 0x3A5F2; c.remotes[1] = 0x1B007;
+    return c;
+}
+
+TEST(nfc_cross_language_vectors)
+{
+    uint8_t key[32], buf[FA_NFC_AREA_LEN]; char h[2 * FA_NFC_AREA_LEN + 1];
+    fa_nfc_key("12345678", key); hex(key, 32, h);
+    CHECK(strcmp(h, "af10885190a690551f30c392e3a2ac903d49c777af07f01f09e12ae1cd47c78f") == 0);
+    fa_nfc_cfg_t c = vec_cfg();
+    CHECK_EQ(fa_nfc_encode_request(buf, &c, 7, key), FA_NFC_REQUEST_LEN);
+    hex(buf, FA_NFC_REQUEST_LEN, h);
+    CHECK(strcmp(h, "574f020107000000540000000201000202020100e8030000e803000088130000e8030000e5aea2e5bbb3e696b0e9a2a8"
+                    "00000000000000000000000002000000f2a5030007b00100000000000000000000000000000000000000000000000000"
+                    "975e9f95241f9ba804233e515be1fba9") == 0);
+    CHECK_EQ(fa_nfc_encode_state(buf, &c, 8, 0x00030301, "3.3"), FA_NFC_STATE_LEN);
+    CHECK_EQ(fa_nfc_crc16(buf, FA_NFC_STATE_LEN - 2), 0xca77);
+    size_t n = fa_nfc_mb_encode_request(buf, sizeof buf, FA_NFC_MB_LEARN_REMOTE, 5, NULL, 0, key, 0xDEADBEEF);
+    hex(buf, n, h);
+    CHECK(strcmp(h, "4d100500636fc02e061f09f2b9b375043c1bd0d2") == 0);
+}
+
+TEST(nfc_state_roundtrip_and_crc)
+{
+    uint8_t buf[FA_NFC_AREA_LEN]; fa_nfc_cfg_t c = vec_cfg(), d; uint32_t gen, fw;
+    fa_nfc_encode_state(buf, &c, 42, 0x00030301, "3.3");
+    CHECK_EQ(fa_nfc_decode_state(buf, FA_NFC_STATE_LEN, &d, &gen, &fw), FA_NFC_OK);
+    CHECK_EQ(gen, 42); CHECK_EQ(fw, 0x00030301);
+    CHECK(memcmp(&c.io, &d.io, sizeof c.io) == 0 && strcmp(c.name, d.name) == 0 && d.n_remotes == 2 && d.remotes[1] == 0x1B007);
+    buf[40] ^= 0x01;                                                          /* 半筆／壞掉的資料：CRC 擋下 */
+    CHECK_EQ(fa_nfc_decode_state(buf, FA_NFC_STATE_LEN, &d, &gen, &fw), FA_NFC_ERR_FORMAT);
+}
+
+TEST(nfc_request_accept_and_reject)
+{
+    uint8_t key[32], bad[32], buf[FA_NFC_AREA_LEN]; fa_nfc_key("12345678", key); fa_nfc_key("12345679", bad);
+    fa_nfc_cfg_t cur = vec_cfg(), want = vec_cfg(), out;
+    want.io.di_mode[3] = FA_DI_PRESS; want.io.jog_ms[2] = 30000; strcpy(want.name, "bath");
+    fa_nfc_encode_request(buf, &want, 7, key);
+    CHECK(fa_nfc_is_request(buf, FA_NFC_HDR_LEN));
+    CHECK_EQ(fa_nfc_check_request(buf, FA_NFC_REQUEST_LEN, key, 7, &cur, &out), FA_NFC_OK);
+    CHECK(out.io.di_mode[3] == FA_DI_PRESS && out.io.jog_ms[2] == 30000 && strcmp(out.name, "bath") == 0);
+    CHECK_EQ(fa_nfc_check_request(buf, FA_NFC_REQUEST_LEN, key, 8, &cur, &out), FA_NFC_ERR_STALE);   /* 重送舊請求 */
+    CHECK_EQ(fa_nfc_check_request(buf, FA_NFC_REQUEST_LEN, bad, 7, &cur, &out), FA_NFC_ERR_AUTH);    /* PIN 錯 */
+    buf[20] ^= 0x01;                                                                                   /* 被改過 */
+    CHECK_EQ(fa_nfc_check_request(buf, FA_NFC_REQUEST_LEN, key, 7, &cur, &out), FA_NFC_ERR_AUTH);
+    want = vec_cfg(); want.io.do_mode[0] = 9; fa_nfc_encode_request(buf, &want, 7, key);              /* 模式超出範圍 */
+    CHECK_EQ(fa_nfc_check_request(buf, FA_NFC_REQUEST_LEN, key, 7, &cur, &out), FA_NFC_ERR_INVALID);
+    want = vec_cfg(); want.io.jog_ms[0] = 100; fa_nfc_encode_request(buf, &want, 7, key);             /* 點動 <0.5s */
+    CHECK_EQ(fa_nfc_check_request(buf, FA_NFC_REQUEST_LEN, key, 7, &cur, &out), FA_NFC_ERR_INVALID);
+    want = vec_cfg(); want.remotes[1] = 0x12345; fa_nfc_encode_request(buf, &want, 7, key);           /* 加沒學過的遙控器 */
+    CHECK_EQ(fa_nfc_check_request(buf, FA_NFC_REQUEST_LEN, key, 7, &cur, &out), FA_NFC_ERR_INVALID);
+    want = vec_cfg(); want.n_remotes = 1; want.remotes[0] = 0x1B007; fa_nfc_encode_request(buf, &want, 7, key);  /* 刪一支 */
+    CHECK_EQ(fa_nfc_check_request(buf, FA_NFC_REQUEST_LEN, key, 7, &cur, &out), FA_NFC_OK);
+    CHECK(out.n_remotes == 1 && out.remotes[0] == 0x1B007 && out.remotes[1] == 0);
+    buf[0] = 0; CHECK_EQ(fa_nfc_check_request(buf, FA_NFC_REQUEST_LEN, key, 7, &cur, &out), FA_NFC_ERR_FORMAT);
+    uint8_t ack[FA_NFC_ACK_LEN]; fa_nfc_encode_ack(ack, 7, FA_NFC_ERR_STALE);
+    CHECK(ack[0] == 'W' && ack[2] == FA_NFC_T_ACK && ack[4] == 7 && ack[FA_NFC_HDR_LEN] == FA_NFC_ERR_STALE);
+    CHECK(!fa_nfc_is_request(ack, FA_NFC_ACK_LEN));                          /* 寫了 ACK 之後不會被當成新請求再處理 */
+}
+
+TEST(nfc_mailbox_auth_and_replay)
+{
+    uint8_t key[32], buf[64]; fa_nfc_key("12345678", key); fa_nfc_mb_req_t r;
+    size_t n = fa_nfc_mb_encode_request(buf, sizeof buf, FA_NFC_MB_GET_STATUS, 1, NULL, 0, key, 0);
+    CHECK_EQ(n, 4); CHECK_EQ(fa_nfc_mb_parse(buf, n, key, 0, &r), FA_NFC_OK);   /* 讀狀態不用授權 */
+    n = fa_nfc_mb_encode_request(buf, sizeof buf, FA_NFC_MB_FACTORY_RESET, 2, NULL, 0, key, 0x11223344);
+    CHECK_EQ(fa_nfc_mb_parse(buf, n, key, 0x11223344, &r), FA_NFC_OK);
+    CHECK(r.cmd == FA_NFC_MB_FACTORY_RESET && r.seq == 2);
+    CHECK_EQ(fa_nfc_mb_parse(buf, n, key, 0x55667788, &r), FA_NFC_ERR_AUTH);    /* challenge 已換：錄下來重送無效 */
+    CHECK_EQ(fa_nfc_mb_parse(buf, n, key, 0, &r), FA_NFC_ERR_AUTH);             /* 沒有有效 challenge */
+    CHECK_EQ(fa_nfc_mb_parse(buf, n - 1, key, 0x11223344, &r), FA_NFC_ERR_AUTH);/* 少了簽章 */
+    buf[1] = 0x55; CHECK_EQ(fa_nfc_mb_parse(buf, n, key, 0x11223344, &r), FA_NFC_ERR_CMD);
+    uint8_t st[FA_NFC_STATUS_LEN], out[32];
+    fa_nfc_status_t s = {.gen = 9, .relays = 0x5, .di = 0x2, .net = 1, .flags = 1, .fw_version = 0x00030301,
+                         .uptime_s = 3600, .challenge = 0xCAFEBABE};
+    fa_nfc_encode_status(st, &s);
+    CHECK_EQ(fa_nfc_mb_resp(out, sizeof out, FA_NFC_MB_GET_STATUS, 1, FA_NFC_OK, st, FA_NFC_STATUS_LEN), 25);
+    CHECK(out[0] == 'R' && out[4] == FA_NFC_STATUS_LEN && out[5 + 4] == 0x5 && out[5 + 16] == 0xBE);
+    CHECK_EQ(fa_nfc_mb_resp(out, 10, FA_NFC_MB_GET_STATUS, 1, FA_NFC_OK, st, FA_NFC_STATUS_LEN), 0);   /* 放不下 */
+}
+
 int main(void)
 {
     RUN(mode_from_dip);
@@ -421,6 +536,11 @@ int main(void)
     RUN(io_rf_is_a_twin_of_wired_di);
     RUN(io_rf_hold_mode_releases_after_timeout);
     RUN(io_respects_max_on_limit);
+    RUN(sha256_and_hmac_standard_vectors);
+    RUN(nfc_cross_language_vectors);
+    RUN(nfc_state_roundtrip_and_crc);
+    RUN(nfc_request_accept_and_reject);
+    RUN(nfc_mailbox_auth_and_replay);
     printf("%d tests, %d failures\n", ul_run, ul_fail);
     return ul_fail ? 1 : 0;
 }

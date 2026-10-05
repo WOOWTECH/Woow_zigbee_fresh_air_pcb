@@ -12,6 +12,7 @@ ESP-IDF v5.5.4 ＋ esp-zigbee-lib v2（Espressif 自家 Zigbee 協定堆疊）�
 | 電源保護 | 同時吸合上限（預設 3）、兩顆線圈吸合間隔 ≥50ms、802.15.4 發射 +10dBm、不啟動 Wi-Fi |
 | 433MHz 遙控 | SYN480R → IO23 邊緣中斷 → EV1527 解碼（連續兩幀相同才算）。學過的遙控器 A/B/C/D 鍵＝DI1–DI4 的分身（同一組設定）。最多記 8 支，存在 NVS |
 | 按鍵 B1 | 短按：風速循環（關→1→2→3→關；4 路模式＝切換繼電器 1）。按住 3–8 秒放開：學習遙控器 20 秒。按住 ≥10 秒放開：恢復出廠 |
+| NFC 設定（V3.3） | U6 ST25DV04KC（I2C：IO20／IO19）。App 貼近板子讀寫 DI／DO 模式、點動時間、名稱、遙控器清單；每 100ms 輪詢晶片。寫入要附 HMAC 簽章（每台 8 位數 PIN，開機 log 會印），規格見 [docs/nfc-protocol.md](../docs/nfc-protocol.md) |
 | 指示燈 L1 | 慢閃＝尚未入網；恆亮＝已入網；快閃＝學習模式（或按住 3–8 秒中）；按住超過 10 秒時恆亮＝放開就重置 |
 
 ### DI／DO 模式（V3.2，`components/fa_core/include/fa_io.h`）
@@ -94,7 +95,9 @@ firmware/
 ├── main/
 │   ├── app_main.c        # GPIO、繼電器執行緒、433 中斷、按鍵／燈號、NVS
 │   ├── fa_zigbee.c/.h    # Zigbee 路由器、4 個 On/Off 端點、配網、恢復出廠
-│   ├── board.h           # 腳位（與 scripts/design.py 一致；V3.2 DI = IO22/IO21/IO20/IO19）
+│   ├── board.h           # 腳位（與 scripts/design.py 一致；menuconfig 選板子版本 V3.3／V3.2）
+│   ├── st25dv.c/.h       # ST25DV04KC I2C 驅動（EEPROM、動態暫存器、mailbox）
+│   ├── fa_nfc_port.c/.h  # NFC 設定介面：驗證並套用 REQUEST、回答 mailbox、寫 STATE
 │   └── Kconfig.projbuild # 可調參數
 ├── components/fa_core/   # 純 C 邏輯（主機可測）
 └── test/                 # 主機端單元測試
