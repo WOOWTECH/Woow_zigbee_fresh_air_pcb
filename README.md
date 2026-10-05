@@ -11,7 +11,8 @@
 | `v1.3` | 參考用，**不可量產** | 原設計忠實重繪（原理圖＋PCB）。市電與低壓 GND 只隔 0.127mm。（`v1.3-baseline` 只含原理圖） |
 | `v2.0` | **DRC 0 錯誤**（已合併 `main`） | 市電隔離 ≥6.4mm、保險絲＋壓敏電阻、降壓電源、Zigbee 串口 |
 | `v3.0` | ERC/DRC 0；韌體 CI 綠燈 | ESP32-C6 單晶片 Zigbee＋SYN480R 433MHz，全部主料 JLC 可貼；市電區沿用 V2.0。見 [CHANGELOG](CHANGELOG.md#30--esp32-c6-單晶片syn480r) |
-| `v3.2` | **目前版本**（ERC/DRC 0），**待打樣實測** | 上緣左半段加長 10mm（L 形）加 4 路光耦 DI（乾接點／5–24VDC，NPN／PNP）、拿掉指撥。見 [V3.2 驗證報告](docs/verification/V3.2.md)（含 J5 接線） |
+| `v3.3` | **目前版本**（ERC/DRC 0），**待打樣實測** | 加 NFC 設定介面（ST25DV04KC＋板上印刷線圈），J5 改到左側板邊。見 [V3.3 驗證報告](docs/verification/V3.3.md) |
+| `v3.2` | ERC/DRC 0 | 上緣左半段加長 10mm（L 形）加 4 路光耦 DI（乾接點／5–24VDC，NPN／PNP）、拿掉指撥。見 [V3.2 驗證報告](docs/verification/V3.2.md)（含 J5 接線） |
 | `v3.1` | 只換值、不改佈線；ERC/DRC 0 | 433 匹配重新選值（失配 8–13dB → 3–5.3dB）、繼電器 PWM 降壓保持（取消 ≤3 顆限制）、續流改 Schottky、CPL 角度修正。見 [V3.1 驗證報告](docs/verification/V3.1.md) |
 
 | V3.0 正面（零件面） | V3.0 背面 |
@@ -143,7 +144,8 @@ kicad-cli pcb drc --severity-error hardware/WO30109_FreshAir/WO30109_FreshAir.ki
 │   ├── route_leftovers.py         # 補繞 Freerouting 沒繞通的線
 │   ├── build_v20.sh               # ★ 一鍵重建 V2.0 PCB
 │   ├── build_v30.sh               # ★ 一鍵重建 V3.0 PCB（從標籤 v2.0）
-│   ├── upgrade_v32_pcb.py         # ★ 一鍵重建 V3.2 PCB（從 V3.1 PCB：加 DI、上緣加長，只用 A* 佈新網路）
+│   ├── upgrade_v32_pcb.py         # ★ 一鍵重建 V3.2／V3.3 PCB（WO_VER=3.2／3.3；從 V3.1 PCB，只用 A* 佈新網路）
+│   ├── nfc_coil.py                # NFC 印刷線圈電感與調諧電容計算
 │   ├── make_jlc_files.py          # ★ JLC 下單檔：Gerber zip、BOM、CPL（含 JLC 旋轉修正）
 │   ├── drc_summary.py             # DRC 結果摘要
 │   ├── add_stitching.py           # GND 縫合過孔
@@ -297,11 +299,13 @@ cd hardware/WO30109_FreshAir && kicad-cli jobset run --file WO30109_FreshAir.kic
 
 ---
 
-## DI 輸入接線（V3.2，J5）
+## DI 輸入接線（J5）
 
 | J5 腳 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
 |---|---|---|---|---|---|---|---|
 | 名稱 | +12V（限流 8mA） | IN1 | IN2 | IN3 | IN4 | COM | GND |
+
+V3.3 起 J5 直立在左側板邊，**由下往上**是 1→7（背面絲印有標示）；V3.2 在上緣，由左往右是 1→7。
 
 - **乾接點**（按鈕、溫控器、門磁）：COM（6）接 GND（7），每個接點接在 +12V（1）和 INx 之間。
 - **NPN 輸出**：COM 接外部 +5～24V，INx 接感測器輸出。

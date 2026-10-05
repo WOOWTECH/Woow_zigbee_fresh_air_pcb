@@ -69,7 +69,8 @@ def prune_hole_to_hole():
     subprocess.run(["kicad-cli", "pcb", "drc", "--format", "json", "-o", out, PCB], capture_output=True)
     bad = []
     for v in json.load(open(out))["violations"]:
-        if v["type"] != "hole_to_hole": continue
+        # hole_to_hole：縫合過孔彼此太近；via_dangling：新走線把背面鋪銅切開後，舊縫合過孔只剩一層接得到
+        if v["type"] not in ("hole_to_hole", "via_dangling"): continue
         for it in v["items"]:
             if it["description"].startswith("Via [/GND]"): bad.append((it["pos"]["x"], it["pos"]["y"])); break
     b2 = pcbnew.LoadBoard(PCB); n = 0
@@ -78,7 +79,7 @@ def prune_hole_to_hole():
             p = t.GetPosition()
             if any(abs(pcbnew.ToMM(p.x) - x) < 0.01 and abs(pcbnew.ToMM(p.y) - y) < 0.01 for x, y in bad):
                 b2.Remove(t); n += 1
-    pcbnew.SaveBoard(PCB, b2); print(f"移除孔距過近的縫合過孔 {n} 顆")
+    pcbnew.SaveBoard(PCB, b2); print(f"移除孔距過近或懸空的 GND 過孔 {n} 顆")
 
 
 def stitch_islands():

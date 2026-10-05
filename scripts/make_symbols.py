@@ -3,6 +3,7 @@
 腳位來源：
   ESP32-C6-WROOM-1  Espressif 規格書 v1.4 Table 3-1（29 腳，EPAD=29）
   SYN480R           JSMSEMI SYN480R 規格書「管腳定義」（SOP-8）
+  ST25DV04KC        ST 規格書 DS13519 Figure 2（SO8N）：1 V_EH、2 AC0、3 AC1、4 VSS、5 SDA、6 SCL、7 GPO（開汲極）、8 VCC
   TLP290-4          Toshiba TLP290-4 規格書 Pin Configuration（SO16，交流輸入光耦 ×4）；KiCad Isolator:TLP290-4 是 4 單元，
                     原理圖產生器一次只放一個單元，所以做成單一單元。腳位：LED 1-2/3-4/5-6/7-8，集極 16/14/12/10、射極 15/13/11/9
 """
@@ -70,6 +71,16 @@ def tlp290_4():
                   "Toshiba TLP290-4 quad AC-input phototransistor optocoupler, SO16, 2.5kVrms", (-7.62, 10.16, 7.62, -12.7), pins)
 
 
+def st25dv04kc():
+    pins = [("power_out", -10.16, 3.81, 0, "V_EH", 1), ("passive", -10.16, 1.27, 0, "AC0", 2),
+            ("passive", -10.16, -1.27, 0, "AC1", 3), ("power_in", -10.16, -3.81, 0, "VSS", 4),
+            ("bidirectional", 10.16, -3.81, 180, "SDA", 5), ("input", 10.16, -1.27, 180, "SCL", 6),
+            ("open_collector", 10.16, 1.27, 180, "GPO", 7), ("power_in", 10.16, 3.81, 180, "VCC", 8)]
+    return symbol("ST25DV04KC", "U", "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
+                  "ST25DV04KC dynamic NFC/RFID tag, ISO 15693 + I2C, 4 Kbit EEPROM, 256 B mailbox, SO8N open-drain GPO",
+                  (-7.62, 6.35, 7.62, -6.35), pins)
+
+
 def crystal4():
     # KiCad 內建 Device:Crystal_GND24 經 kicad-sch-api 寫出後 KiCad 讀不回來，另做一個等效符號
     pins = [("passive", -7.62, 0, 0, "X1", 1), ("passive", 7.62, 0, 180, "X2", 3),
@@ -80,7 +91,7 @@ def crystal4():
 
 def main():
     s = open(LIB).read()
-    for name, body in (("ESP32-C6-WROOM-1", esp32c6()), ("SYN480R", syn480r()), ("Crystal_4P", crystal4()), ("TLP290-4", tlp290_4())):
+    for name, body in (("ESP32-C6-WROOM-1", esp32c6()), ("SYN480R", syn480r()), ("Crystal_4P", crystal4()), ("TLP290-4", tlp290_4()), ("ST25DV04KC", st25dv04kc())):
         m = re.search(rf'\n\t\(symbol "{re.escape(name)}"\n.*?\n\t\)\n', s, re.S)
         if m:
             s = s[:m.start() + 1] + body + s[m.end():]
