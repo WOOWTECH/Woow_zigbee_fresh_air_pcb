@@ -2,20 +2,32 @@
 #include <string.h>
 #include "fa_sha256.h"
 
-static const char KEY_PREFIX[] = "WO30109-NFC-v1:";
+static const char KEY_PREFIX[] = "WO30109-NFC-v2:";
 
 static void put16(uint8_t *p, uint16_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
 static void put32(uint8_t *p, uint32_t v) { for (int i = 0; i < 4; i++) p[i] = (uint8_t)(v >> (8 * i)); }
 static uint16_t get16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
 static uint32_t get32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
 
-void fa_nfc_key(const char pin[8], uint8_t key[32])
+void fa_nfc_key_from_secret(const uint8_t secret[FA_NFC_SECRET_LEN], uint8_t key[32])
 {
     fa_sha256_t c;
     fa_sha256_init(&c);
     fa_sha256_update(&c, KEY_PREFIX, sizeof KEY_PREFIX - 1);
-    fa_sha256_update(&c, pin, 8);
+    fa_sha256_update(&c, secret, FA_NFC_SECRET_LEN);
     fa_sha256_final(&c, key);
+}
+
+size_t fa_nfc_app_qr(const uint8_t uid[8], const uint8_t secret[FA_NFC_SECRET_LEN], char out[FA_NFC_APP_QR_LEN + 1])
+{
+    static const char H[] = "0123456789ABCDEF";
+    char *p = out;
+    memcpy(p, "WONFC:2:", 8); p += 8;
+    for (int i = 7; i >= 0; i--) { *p++ = H[uid[i] >> 4]; *p++ = H[uid[i] & 15]; }
+    *p++ = ':';
+    for (int i = 0; i < FA_NFC_SECRET_LEN; i++) { *p++ = H[secret[i] >> 4]; *p++ = H[secret[i] & 15]; }
+    *p = 0;
+    return (size_t)(p - out);
 }
 
 uint16_t fa_nfc_crc16(const uint8_t *p, size_t n)
@@ -30,7 +42,7 @@ uint16_t fa_nfc_crc16(const uint8_t *p, size_t n)
 
 static void put_hdr(uint8_t *o, uint8_t type, uint32_t gen, uint16_t len)
 {
-    o[0] = 'W'; o[1] = 'O'; o[2] = type; o[3] = 1;
+    o[0] = 'W'; o[1] = 'O'; o[2] = type; o[3] = FA_NFC_VERSION;
     put32(o + 4, gen); put16(o + 8, len); put16(o + 10, 0);
 }
 
@@ -64,7 +76,7 @@ static void get_payload(const uint8_t *p, fa_nfc_cfg_t *c)
 
 static bool hdr_ok(const uint8_t *in, size_t n, uint8_t type, uint16_t len)
 {
-    return n >= FA_NFC_HDR_LEN && in[0] == 'W' && in[1] == 'O' && in[2] == type && in[3] == 1 && get16(in + 8) == len;
+    return n >= FA_NFC_HDR_LEN && in[0] == 'W' && in[1] == 'O' && in[2] == type && in[3] == FA_NFC_VERSION && get16(in + 8) == len;
 }
 
 size_t fa_nfc_encode_state(uint8_t out[FA_NFC_AREA_LEN], const fa_nfc_cfg_t *c, uint32_t gen, uint32_t fw_version,

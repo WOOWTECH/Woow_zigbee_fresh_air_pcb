@@ -5,7 +5,9 @@
  *   0x000–0x03F  保留（之後放 NDEF：貼手機就開 App 下載頁）
  *   0x040–0x0DF  STATE   ESP32 寫、App 讀：目前設定＋代數 gen＋韌體版本，CRC16 保護
  *   0x0E0–0x17F  REQUEST App 寫、ESP32 讀：要套用的設定＋所根據的 gen＋HMAC 簽章；處理完 ESP32 在原位寫 ACK
- * 驗證：key = SHA-256("WO30109-NFC-v1:" + 8 位數 PIN)；REQUEST 與需要授權的 mailbox 指令附 HMAC-SHA256 前 16 bytes。
+ * 驗證（協定 v2）：每台 128-bit 隨機金鑰 secret（第一次開機產生，印在標籤的 App QR），
+ *   key = SHA-256("WO30109-NFC-v2:" + secret)；REQUEST 與需要授權的 mailbox 指令附 HMAC-SHA256 前 16 bytes。
+ *   App QR：WONFC:2:<UID 16 位大寫十六進位，MSB 在前>:<secret 32 位大寫十六進位>（全部是 QR 英數模式字元）
  * ST25DV 的 RF 密碼 I2C 端無法設定（規格書 Table 60），所以不用晶片的 RF 寫保護，改由 ESP32 驗簽：
  * 誰都能寫 EEPROM，但只有帶正確簽章、根據最新 gen 的 REQUEST 會被套用（重送舊的 REQUEST 會因 gen 不符被拒）。
  * 所有多位元組欄位都是 little-endian。 */
@@ -45,7 +47,13 @@ typedef struct {
     uint32_t    remotes[FA_NFC_REMOTES_MAX];   /* EV1527 20 位元位址 */
 } fa_nfc_cfg_t;
 
-void   fa_nfc_key(const char pin[8], uint8_t key[32]);
+#define FA_NFC_VERSION     2
+#define FA_NFC_SECRET_LEN  16
+#define FA_NFC_APP_QR_LEN  (8 + 16 + 1 + 32)                  /* "WONFC:2:" + UID + ":" + secret = 57 */
+
+void   fa_nfc_key_from_secret(const uint8_t secret[FA_NFC_SECRET_LEN], uint8_t key[32]);
+/* 產生標籤上的 App QR 字串（以 0 結尾），回傳長度。uid 照 ST25DV 讀出的順序（LSB 在前，uid[7]＝0xE0） */
+size_t fa_nfc_app_qr(const uint8_t uid[8], const uint8_t secret[FA_NFC_SECRET_LEN], char out[FA_NFC_APP_QR_LEN + 1]);
 uint16_t fa_nfc_crc16(const uint8_t *p, size_t n);          /* CRC-16/CCITT-FALSE（0x1021，初值 0xFFFF） */
 
 /* ESP32 端 */

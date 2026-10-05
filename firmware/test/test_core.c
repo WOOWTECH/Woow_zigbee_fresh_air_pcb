@@ -416,6 +416,11 @@ TEST(sha256_and_hmac_standard_vectors)
 }
 
 /* ---------------- NFC 協定（與 tools/nfc_ref.py 同一組向量）---------------- */
+/* 與 tools/nfc_ref.py 的 VEC_SECRET／VEC_UID 相同。UID 照 ST25DV 讀出的順序（LSB 在前），QR 裡顯示成 MSB 在前 */
+static const uint8_t VEC_SECRET[16] = {0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+                                       0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
+static const uint8_t VEC_UID_LSB[8] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x08, 0x02, 0xE0};
+
 static fa_nfc_cfg_t vec_cfg(void)
 {
     fa_nfc_cfg_t c; memset(&c, 0, sizeof c);
@@ -429,19 +434,22 @@ static fa_nfc_cfg_t vec_cfg(void)
 TEST(nfc_cross_language_vectors)
 {
     uint8_t key[32], buf[FA_NFC_AREA_LEN]; char h[2 * FA_NFC_AREA_LEN + 1];
-    fa_nfc_key("12345678", key); hex(key, 32, h);
-    CHECK(strcmp(h, "af10885190a690551f30c392e3a2ac903d49c777af07f01f09e12ae1cd47c78f") == 0);
+    fa_nfc_key_from_secret(VEC_SECRET, key); hex(key, 32, h);
+    CHECK(strcmp(h, "d5c163b68da1f4fb1d51d02498707965f98ade59f5da675bccea78d184fd5fdc") == 0);
+    char qr[FA_NFC_APP_QR_LEN + 1];
+    CHECK_EQ(fa_nfc_app_qr(VEC_UID_LSB, VEC_SECRET, qr), FA_NFC_APP_QR_LEN);
+    CHECK(strcmp(qr, "WONFC:2:E002080000000001:101112131415161718191A1B1C1D1E1F") == 0);
     fa_nfc_cfg_t c = vec_cfg();
     CHECK_EQ(fa_nfc_encode_request(buf, &c, 7, key), FA_NFC_REQUEST_LEN);
     hex(buf, FA_NFC_REQUEST_LEN, h);
-    CHECK(strcmp(h, "574f020107000000540000000201000202020100e8030000e803000088130000e8030000e5aea2e5bbb3e696b0e9a2a8"
+    CHECK(strcmp(h, "574f020207000000540000000201000202020100e8030000e803000088130000e8030000e5aea2e5bbb3e696b0e9a2a8"
                     "00000000000000000000000002000000f2a5030007b00100000000000000000000000000000000000000000000000000"
-                    "975e9f95241f9ba804233e515be1fba9") == 0);
+                    "91ac26d044df1d9d0fbeaa1e0b5fac63") == 0);
     CHECK_EQ(fa_nfc_encode_state(buf, &c, 8, 0x00030301, "3.3"), FA_NFC_STATE_LEN);
-    CHECK_EQ(fa_nfc_crc16(buf, FA_NFC_STATE_LEN - 2), 0xca77);
+    CHECK_EQ(fa_nfc_crc16(buf, FA_NFC_STATE_LEN - 2), 0x6194);
     size_t n = fa_nfc_mb_encode_request(buf, sizeof buf, FA_NFC_MB_LEARN_REMOTE, 5, NULL, 0, key, 0xDEADBEEF);
     hex(buf, n, h);
-    CHECK(strcmp(h, "4d100500636fc02e061f09f2b9b375043c1bd0d2") == 0);
+    CHECK(strcmp(h, "4d1005007b569d16854ce103a231b68817a8a725") == 0);
 }
 
 TEST(nfc_state_roundtrip_and_crc)
@@ -457,7 +465,9 @@ TEST(nfc_state_roundtrip_and_crc)
 
 TEST(nfc_request_accept_and_reject)
 {
-    uint8_t key[32], bad[32], buf[FA_NFC_AREA_LEN]; fa_nfc_key("12345678", key); fa_nfc_key("12345679", bad);
+    uint8_t key[32], bad[32], buf[FA_NFC_AREA_LEN], other[16];
+    fa_nfc_key_from_secret(VEC_SECRET, key);
+    memcpy(other, VEC_SECRET, 16); other[15] ^= 1; fa_nfc_key_from_secret(other, bad);   /* 別台的金鑰 */
     fa_nfc_cfg_t cur = vec_cfg(), want = vec_cfg(), out;
     want.io.di_mode[3] = FA_DI_PRESS; want.io.jog_ms[2] = 30000; strcpy(want.name, "bath");
     fa_nfc_encode_request(buf, &want, 7, key);
@@ -465,7 +475,7 @@ TEST(nfc_request_accept_and_reject)
     CHECK_EQ(fa_nfc_check_request(buf, FA_NFC_REQUEST_LEN, key, 7, &cur, &out), FA_NFC_OK);
     CHECK(out.io.di_mode[3] == FA_DI_PRESS && out.io.jog_ms[2] == 30000 && strcmp(out.name, "bath") == 0);
     CHECK_EQ(fa_nfc_check_request(buf, FA_NFC_REQUEST_LEN, key, 8, &cur, &out), FA_NFC_ERR_STALE);   /* 重送舊請求 */
-    CHECK_EQ(fa_nfc_check_request(buf, FA_NFC_REQUEST_LEN, bad, 7, &cur, &out), FA_NFC_ERR_AUTH);    /* PIN 錯 */
+    CHECK_EQ(fa_nfc_check_request(buf, FA_NFC_REQUEST_LEN, bad, 7, &cur, &out), FA_NFC_ERR_AUTH);    /* 別台的金鑰 */
     buf[20] ^= 0x01;                                                                                   /* 被改過 */
     CHECK_EQ(fa_nfc_check_request(buf, FA_NFC_REQUEST_LEN, key, 7, &cur, &out), FA_NFC_ERR_AUTH);
     want = vec_cfg(); want.io.do_mode[0] = 9; fa_nfc_encode_request(buf, &want, 7, key);              /* 模式超出範圍 */
@@ -483,9 +493,22 @@ TEST(nfc_request_accept_and_reject)
     CHECK(!fa_nfc_is_request(ack, FA_NFC_ACK_LEN));                          /* 寫了 ACK 之後不會被當成新請求再處理 */
 }
 
+TEST(nfc_v1_frames_rejected)
+{
+    uint8_t key[32], buf[FA_NFC_AREA_LEN]; fa_nfc_key_from_secret(VEC_SECRET, key);
+    fa_nfc_cfg_t cur = vec_cfg(), out, c = vec_cfg(); uint32_t gen, fw;
+    fa_nfc_encode_request(buf, &c, 7, key);
+    CHECK_EQ(buf[3], 2);                                                      /* 標頭版本＝2 */
+    buf[3] = 1;                                                               /* 舊版 App 送來的請求 */
+    CHECK(!fa_nfc_is_request(buf, FA_NFC_HDR_LEN));
+    CHECK_EQ(fa_nfc_check_request(buf, FA_NFC_REQUEST_LEN, key, 7, &cur, &out), FA_NFC_ERR_FORMAT);
+    fa_nfc_encode_state(buf, &c, 1, 0, "3.4");
+    buf[3] = 1; CHECK_EQ(fa_nfc_decode_state(buf, FA_NFC_STATE_LEN, &out, &gen, &fw), FA_NFC_ERR_FORMAT);
+}
+
 TEST(nfc_mailbox_auth_and_replay)
 {
-    uint8_t key[32], buf[64]; fa_nfc_key("12345678", key); fa_nfc_mb_req_t r;
+    uint8_t key[32], buf[64]; fa_nfc_key_from_secret(VEC_SECRET, key); fa_nfc_mb_req_t r;
     size_t n = fa_nfc_mb_encode_request(buf, sizeof buf, FA_NFC_MB_GET_STATUS, 1, NULL, 0, key, 0);
     CHECK_EQ(n, 4); CHECK_EQ(fa_nfc_mb_parse(buf, n, key, 0, &r), FA_NFC_OK);   /* 讀狀態不用授權 */
     n = fa_nfc_mb_encode_request(buf, sizeof buf, FA_NFC_MB_FACTORY_RESET, 2, NULL, 0, key, 0x11223344);
@@ -576,6 +599,7 @@ int main(void)
     RUN(nfc_cross_language_vectors);
     RUN(nfc_state_roundtrip_and_crc);
     RUN(nfc_request_accept_and_reject);
+    RUN(nfc_v1_frames_rejected);
     RUN(nfc_mailbox_auth_and_replay);
     RUN(modes_counts_labels_and_bounds);
     RUN(modes_roundtrip_and_reject);

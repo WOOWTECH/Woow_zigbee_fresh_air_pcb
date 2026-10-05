@@ -1,4 +1,4 @@
-# WO30109 NFC 設定協定 v1（給 App 開發）
+# WO30109 NFC 設定協定 v2（給 App 開發）
 
 適用板子 V3.3 起（U6 ST25DV04KC）。App 貼近板子即可讀寫進階設定，不需要任何網路。
 
@@ -49,7 +49,7 @@ iOS 用 `customCommand(requestFlags:customCommandCode:customRequestParameters:)`
 |---|---|---|---|
 | 0 | 2 | magic | `'W' 'O'`（`57 4F`） |
 | 2 | 1 | type | 1＝STATE、2＝REQUEST、3＝ACK |
-| 3 | 1 | version | 1 |
+| 3 | 1 | version | 2 |
 | 4 | 4 | gen | 設定代數（見 §3） |
 | 8 | 2 | len | 標頭後面的內容長度 |
 | 10 | 2 | flags | 0 |
@@ -79,7 +79,7 @@ iOS 用 `customCommand(requestFlags:customCommandCode:customRequestParameters:)`
 `標頭(type=2, gen=所根據的 STATE.gen, len=84)` ＋ `payload(84)` ＋ `tag(16)`
 
 - **tag**：`HMAC-SHA256(key, 前 96 bytes)` 的前 16 bytes。
-- **key**：`SHA-256("WO30109-NFC-v1:" + PIN)`。PIN 是 8 位數字的 ASCII，印在機器標籤上（§5）。
+- **key**：`SHA-256("WO30109-NFC-v2:" + secret)`。secret 是每台 16 bytes 的隨機金鑰，從標籤上的 App QR 取得（§5）。
 - **寫入順序很重要**：先寫區塊 57–83（位址 `0x0E4` 起，也就是第 4 byte 以後的所有內容），**最後才寫區塊 56**（magic／type／version 所在的 `0x0E0`–`0x0E3`）。ESP32 只要看到 magic 和 type=2，就當作整筆已經寫完。
 - **最後一塊不足 4 bytes**：補 0。112 bytes 剛好 28 塊，不用補。
 
@@ -92,7 +92,7 @@ ESP32 處理完 REQUEST（每 100ms 檢查一次）後，會在同一個位置�
 | status | 意義 | App 該怎麼做 |
 |---|---|---|
 | 0 | OK，已套用 | 重讀 STATE（gen 會＋1） |
-| 1 | 簽章錯 | PIN 不對（或資料傳輸出錯） |
+| 1 | 簽章錯 | 金鑰不對（App QR 掃錯台，或資料傳輸出錯） |
 | 2 | gen 不符 | 設定在這之間被別處改過：重讀 STATE、讓使用者確認後再送 |
 | 3 | 欄位不合法 | 模式超出範圍、點動時間超出範圍、名稱沒有 0 結尾，或遙控器清單裡有沒學過的位址 |
 | 4 | 格式錯 | magic／type／version／len 不對 |
@@ -149,22 +149,35 @@ ESP32 處理完 REQUEST（每 100ms 檢查一次）後，會在同一個位置�
 
 status 碼和 §2.5 相同，另外 5＝未知指令。
 
-## 5. PIN 與安全性
+## 5. 金鑰、App QR 與安全性
 
-- **PIN 怎麼來**：每台 8 位數，第一次開機用硬體亂數產生、存在 NVS，恢復出廠也保留。開機 log 會印 `NFC 就緒：UID …，PIN xxxxxxxx`。
-- **產線**：燒錄後讀 log，把 PIN 印在標籤上（例如做成 QR code，內容 `WO30109:<UID>:<PIN>`，App 掃一次就記住）。
-- **V4（Matter）**：改用 Matter 配對碼，不再另外印。
+- **金鑰怎麼來**：每台 **128-bit 隨機金鑰（secret）**，第一次開機用硬體亂數產生（同時開 bootloader 熵源，確保第一次開機、射頻還沒啟動時也是真亂數），存在 NVS，**恢復出廠也保留**，標籤上的 QR 才會一直有效。
+- **App QR**：開機 log 會印出 `NFC 就緒（協定 v2），gen …；App QR：WONFC:2:…`。產線燒錄後讀出這行，印成標籤上 Matter QR 旁邊的第二個 QR。
+
+  | 欄位 | 內容 |
+  |---|---|
+  | 格式 | `WONFC:2:<UID>:<secret>` |
+  | UID | 16 位大寫十六進位，**MSB 在前**（和手機讀到的 ISO 15693 UID 顯示順序相同，`E002` 開頭） |
+  | secret | 32 位大寫十六進位 |
+  | 長度 | 57 字元；全部是 QR「英數模式」字元，QR 可以做得很小 |
+
+  App 掃一次就把「UID → secret」記起來；之後碰到 NFC，用讀到的 UID 找對應的 secret。UID 對不上表示掃錯台。
+- **為什麼不用 Matter 配對碼**：
+  - 裝置執行時拿不到配對碼：Matter 工廠資料只存 SPAKE2+ 驗證資料，`GetSetupPasscode()` 回傳「未實作」。
+  - 配對碼只有 27 bit，當 NFC 金鑰可以被離線暴力破解，破了連 Matter 配對的秘密也一起洩漏。
 - **為什麼不用晶片的 RF 密碼**：ST25DV 的 RF 密碼 I2C 端無法設定（規格書 Table 60 寫明 I2C「No access」），只能由手機端寫入，產線就得逐台用手機設密碼。所以改由 ESP32 驗簽：
   - **讀取不設限**：STATE 裡沒有機密資料。
   - **寫入要簽章**：誰都能寫 EEPROM，但只有帶正確簽章、而且根據最新 gen 的 REQUEST 才會被套用；其他寫入會收到 ACK 錯誤碼，下次開機 STATE 也會被重寫回正確內容。
   - **遙控器只能刪、不能加**：加入新遙控器一定要在現場學習（按鍵或 LEARN_REMOTE 指令），避免用 NFC 偷偷塞一支別人的遙控器。
 - **限制**：
-  - 拿到 PIN 的人可以改設定，所以 PIN 要當成和 Wi-Fi 密碼一樣的東西保管。
-  - 8 位數 PIN 的 key 理論上可以離線暴力破解（拿一筆合法的 REQUEST 去試 10⁸ 個 PIN）。設定介面的風險可以接受；V4 改用 Matter 配對碼時，一併評估是否改用更長的 key。
+  - 拿到 App QR（看得到標籤）的人可以改設定。標籤貼在外殼內側或配電箱內，和 Matter QR 一樣當成實體存取的憑證。
+  - 開機 log 每次都會印出 App QR，接 UART 的人讀得到；UART 測試點在背面，要拆殼才碰得到，等同實體存取。
+  - 128-bit 金鑰無法暴力破解（v1 的 8 位數 PIN 可以，這是改 v2 的主因之一）。
 
 ## 6. App 建議流程
 
-1. **連線**：掃描到 ISO 15693 標籤，UID 以 `E0 02` 開頭（ST）。
+0. **第一次**：掃標籤上的 App QR，記住「UID → secret」。
+1. **連線**：掃描到 ISO 15693 標籤，UID 以 `E0 02` 開頭（ST）；用 UID 找到這台的 secret，找不到就請使用者先掃 App QR。
 2. **讀狀態**：讀區塊 16–42（`0x040` 起 108 bytes）→ 解析 STATE；CRC 錯就重讀。
 3. **板子有電時**：顯示即時狀態，送 GET_STATUS 取得繼電器／DI 狀態和 challenge。
 4. **送出設定**：使用者修改後組 REQUEST（gen＝剛讀到的 STATE.gen）→ 先寫區塊 57–83，最後寫區塊 56。
@@ -176,7 +189,8 @@ status 碼和 §2.5 相同，另外 5＝未知指令。
 
 輸入：
 
-- PIN `12345678`
+- secret＝`101112131415161718191A1B1C1D1E1F`（bytes 0x10–0x1F）
+- UID＝`E002080000000001`
 - di＝[2, 1, 0, 2]
 - do＝[2, 2, 1, 0]
 - jog_ms＝[1000, 1000, 5000, 1000]
@@ -184,19 +198,21 @@ status 碼和 §2.5 相同，另外 5＝未知指令。
 - remotes＝[0x3A5F2, 0x1B007]
 
 ```text
-key        af10885190a690551f30c392e3a2ac903d49c777af07f01f09e12ae1cd47c78f
+key        d5c163b68da1f4fb1d51d02498707965f98ade59f5da675bccea78d184fd5fdc
+App QR     WONFC:2:E002080000000001:101112131415161718191A1B1C1D1E1F
 REQUEST    （gen 7）
-           574f020107000000540000000201000202020100e8030000e803000088130000e8030000e5aea2e5bbb3e696b0e9a2a8
+           574f020207000000540000000201000202020100e8030000e803000088130000e8030000e5aea2e5bbb3e696b0e9a2a8
            00000000000000000000000002000000f2a5030007b00100000000000000000000000000000000000000000000000000
-           975e9f95241f9ba804233e515be1fba9
-STATE CRC  （gen 8、fw 0x00030301、hw "3.3"）前 104 bytes 的 CRC-16 = 0xca77
+           91ac26d044df1d9d0fbeaa1e0b5fac63
+STATE CRC  （gen 8、fw 0x00030301、hw "3.3"）前 104 bytes 的 CRC-16 = 0x6194
 LEARN_REMOTE（seq 5、challenge 0xDEADBEEF）
-           4d100500636fc02e061f09f2b9b375043c1bd0d2
+           4d1005007b569d16854ce103a231b68817a8a725
 ```
 
 產生方式：`python3 tools/nfc_ref.py`。韌體對應的測試是 `firmware/test/test_core.c` 的 `nfc_cross_language_vectors`。
 
 ## 8. 版本相容
 
-- `version` 欄位目前是 1。之後擴充 payload 時會改成 2，並保留讀 v1 的能力。
+- `version` 欄位目前是 **2**。v1（8 位數 PIN）只存在 V3.3 開發期韌體，沒有出貨，所以 v2 韌體**不相容 v1**：v1 的 REQUEST／STATE 一律回 status 4（格式錯）。
+- 之後擴充 payload 時改成 3，並保留讀 v2 的能力。
 - App 遇到 version 比自己認得的新，請只讀、不寫。

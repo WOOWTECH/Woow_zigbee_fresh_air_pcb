@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "esp_log.h"
+#include "bootloader_random.h"
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -30,17 +31,21 @@ static void nvs_u32(const char *k, uint32_t *v, bool save)
     nvs_close(h);
 }
 
-/* 每台一組 8 位數 PIN：第一次開機用硬體亂數產生、存 NVS（恢復出廠也保留），開機印在 log；
- * 產線燒錄時讀出來印在標籤上（docs/nfc-protocol.md）。V4（Matter）會改用 Matter 配對碼。 */
-static void load_pin(char pin[9])
+/* 協定 v2：每台一組 128-bit 隨機金鑰，第一次開機產生、存 NVS "nfc_secret"（恢復出廠也保留，標籤上的 App QR 才會一直有效）。
+ * 產生時另開 bootloader 熵源：第一次開機時射頻（Thread／Zigbee）還沒啟動，esp_random 只有在射頻或熵源開著時才是真亂數。
+ * 開機 log 印出 App QR 字串，產線燒錄後讀出來印在標籤上（docs/nfc-protocol.md §5）。 */
+static void load_secret(uint8_t secret[FA_NFC_SECRET_LEN])
 {
     nvs_handle_t h;
-    size_t len = 9;
-    if (nvs_open("fa", NVS_READWRITE, &h) != ESP_OK) { strcpy(pin, "00000000"); return; }
-    if (nvs_get_str(h, "nfc_pin", pin, &len) != ESP_OK || strlen(pin) != 8) {
-        snprintf(pin, 9, "%08lu", (unsigned long)(esp_random() % 100000000UL));
-        nvs_set_str(h, "nfc_pin", pin);
+    size_t len = FA_NFC_SECRET_LEN;
+    if (nvs_open("fa", NVS_READWRITE, &h) != ESP_OK) { memset(secret, 0, FA_NFC_SECRET_LEN); return; }
+    if (nvs_get_blob(h, "nfc_secret", secret, &len) != ESP_OK || len != FA_NFC_SECRET_LEN) {
+        bootloader_random_enable();
+        esp_fill_random(secret, FA_NFC_SECRET_LEN);
+        bootloader_random_disable();
+        nvs_set_blob(h, "nfc_secret", secret, FA_NFC_SECRET_LEN);
         nvs_commit(h);
+        ESP_LOGW(TAG, "第一次開機：已產生 NFC 金鑰");
     }
     nvs_close(h);
 }
@@ -85,7 +90,7 @@ static void handle_request(void)
     fa_nfc_encode_ack(ack, based_on, (uint8_t)st);
     st25dv_write_eeprom(FA_NFC_ADDR_REQUEST, ack, sizeof ack);    /* 覆蓋 header：同一筆不會再處理第二次 */
     xSemaphoreGive(s_mx);
-    static const char *ST[] = {"OK", "簽章錯（PIN 不對）", "gen 不符（舊請求）", "欄位不合法", "格式錯"};
+    static const char *ST[] = {"OK", "簽章錯（金鑰不對）", "gen 不符（舊請求）", "欄位不合法", "格式錯"};
     ESP_LOGI(TAG, "REQUEST（根據 gen %lu）：%s", (unsigned long)based_on, st < 5 ? ST[st] : "?");
 }
 
@@ -142,16 +147,18 @@ void fa_nfc_port_start(int sda, int scl, const fa_nfc_port_cb_t *cb)
     if (st25dv_init(sda, scl) != ESP_OK) return;
     s_cb = *cb;
     s_mx = xSemaphoreCreateMutex();
-    char pin[9];
-    load_pin(pin);
-    fa_nfc_key(pin, s_key);
+    uint8_t secret[FA_NFC_SECRET_LEN];
+    load_secret(secret);
+    fa_nfc_key_from_secret(secret, s_key);
     nvs_u32("nfc_gen", &s_gen, false);
     static const uint8_t factory_i2c_pwd[8] = {0};                 /* 出廠 I2C 密碼；只用來開 mailbox，不靠它保護資料 */
     if (st25dv_enable_mailbox(factory_i2c_pwd) != ESP_OK) ESP_LOGW(TAG, "mailbox 開不起來，只能用 EEPROM 設定");
     uint8_t uid[8] = {0};
     st25dv_read_uid(uid);
-    ESP_LOGI(TAG, "NFC 就緒：UID %02X%02X%02X%02X%02X%02X%02X%02X，PIN %s，gen %lu",
-             uid[7], uid[6], uid[5], uid[4], uid[3], uid[2], uid[1], uid[0], pin, (unsigned long)s_gen);
+    char qr[FA_NFC_APP_QR_LEN + 1];
+    fa_nfc_app_qr(uid, secret, qr);
+    memset(secret, 0, sizeof secret);
+    ESP_LOGI(TAG, "NFC 就緒（協定 v%d），gen %lu；App QR：%s", FA_NFC_VERSION, (unsigned long)s_gen, qr);
     s_running = true;
     write_state();                                                 /* 開機時 STATE 以 NVS 為準（不管 App 寫過什麼） */
     xTaskCreate(nfc_task, "nfc", 4096, NULL, 2, NULL);

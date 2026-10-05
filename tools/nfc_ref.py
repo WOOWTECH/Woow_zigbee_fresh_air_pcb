@@ -1,4 +1,4 @@
-"""WO30109 NFC 設定協定的 Python 參考實作（App 端）。規格：docs/nfc-protocol.md。
+"""WO30109 NFC 設定協定 v2 的 Python 參考實作（App 端）。規格：docs/nfc-protocol.md。
 
 只用標準函式庫（hashlib／hmac／struct），刻意不共用 C 程式碼：韌體的 fa_nfc.c 與這支各自實作同一份規格，
 再用 vectors() 產生的固定測試向量互相對照（firmware/test/test_core.c 的 nfc_cross_language_vectors）。
@@ -16,9 +16,30 @@ DI_MODES = {0: "全關", 1: "按一次", 2: "持續"}
 DO_MODES = {0: "自鎖", 1: "點動", 2: "互鎖"}
 
 
-def key_from_pin(pin: str) -> bytes:
-    assert len(pin) == 8 and pin.isdigit(), "PIN 是 8 位數字"
-    return hashlib.sha256(b"WO30109-NFC-v1:" + pin.encode()).digest()
+VERSION = 2
+
+
+def key_from_secret(secret: bytes) -> bytes:
+    """v2：每台 128-bit 隨機金鑰（印在標籤的 App QR）→ HMAC key"""
+    assert len(secret) == 16, "金鑰是 16 bytes"
+    return hashlib.sha256(b"WO30109-NFC-v2:" + secret).digest()
+
+
+def app_qr(uid_msb_hex: str, secret: bytes) -> str:
+    """標籤上的 App QR 內容。全部大寫十六進位＋冒號，QR 可用英數模式。UID 照 NFC 讀到的顯示順序（E002 開頭）"""
+    assert len(uid_msb_hex) == 16 and len(secret) == 16
+    return f"WONFC:2:{uid_msb_hex.upper()}:{secret.hex().upper()}"
+
+
+def parse_app_qr(s: str):
+    """回傳 (UID 十六進位字串, secret bytes)；格式不對回傳 None"""
+    parts = s.strip().split(":")
+    if len(parts) != 4 or parts[0] != "WONFC" or parts[1] != "2" or len(parts[2]) != 16 or len(parts[3]) != 32:
+        return None
+    try:
+        return parts[2].upper(), bytes.fromhex(parts[3])
+    except ValueError:
+        return None
 
 
 def crc16(data: bytes) -> int:
@@ -31,7 +52,7 @@ def crc16(data: bytes) -> int:
 
 
 def header(t: int, gen: int, length: int) -> bytes:
-    return b"WO" + bytes([t, 1]) + struct.pack("<IHH", gen, length, 0)
+    return b"WO" + bytes([t, VERSION]) + struct.pack("<IHH", gen, length, 0)
 
 
 def payload(cfg: dict) -> bytes:
@@ -65,7 +86,7 @@ def encode_state(cfg: dict, gen: int, fw_version: int, hw_rev: bytes) -> bytes:
 
 def decode_state(b: bytes) -> dict:
     """App 讀 0x040 起 106 bytes 後解析；CRC 錯回傳 None（可能讀到 ESP32 正在寫的半筆，再讀一次）"""
-    if b[:4] != b"WO" + bytes([T_STATE, 1]) or crc16(b[:104]) != struct.unpack_from("<H", b, 104)[0]:
+    if b[:4] != b"WO" + bytes([T_STATE, VERSION]) or crc16(b[:104]) != struct.unpack_from("<H", b, 104)[0]:
         return None
     gen, = struct.unpack_from("<I", b, 4)
     fw, = struct.unpack_from("<I", b, HDR_LEN + PAYLOAD_LEN)
@@ -74,7 +95,7 @@ def decode_state(b: bytes) -> dict:
 
 def decode_ack(b: bytes):
     """ESP32 處理完 REQUEST 後在 0x0E0 寫的 16 bytes：回傳 (所根據的 gen, 狀態碼)；還沒處理回傳 None"""
-    if b[:4] != b"WO" + bytes([T_ACK, 1]):
+    if b[:4] != b"WO" + bytes([T_ACK, VERSION]):
         return None
     return struct.unpack_from("<I", b, 4)[0], b[HDR_LEN]
 
@@ -96,14 +117,16 @@ def mb_parse_response(b: bytes) -> dict:
 
 
 # ---------------- 測試向量（firmware/test/test_core.c 用同樣的輸入，結果必須逐 byte 相同）----------------
-VEC_PIN = "12345678"
+VEC_SECRET = bytes(range(0x10, 0x20))          # 10 11 … 1F
+VEC_UID = "E002080000000001"
 VEC_CFG = {"di": [2, 1, 0, 2], "do": [2, 2, 1, 0], "jog_ms": [1000, 1000, 5000, 1000], "name": "客廳新風",
            "remotes": [0x3A5F2, 0x1B007]}
 
 
 def vectors() -> dict:
-    key = key_from_pin(VEC_PIN)
+    key = key_from_secret(VEC_SECRET)
     return {"key": key.hex(),
+            "app_qr": app_qr(VEC_UID, VEC_SECRET),
             "request": encode_request(VEC_CFG, 7, key).hex(),
             "state_crc": "%04x" % crc16(encode_state(VEC_CFG, 8, 0x00030301, b"3.3\0")[:104]),
             "mb_learn": mb_request(MB_LEARN_REMOTE, 5, b"", key, 0xDEADBEEF).hex()}
@@ -113,7 +136,10 @@ if __name__ == "__main__":
     # 標準向量：SHA-256（FIPS 180-2 "abc"）、HMAC-SHA256（RFC 4231 case 2）、CRC-16/CCITT-FALSE（"123456789"＝29B1）
     assert hashlib.sha256(b"abc").hexdigest().startswith("ba7816bf")
     assert crc16(b"123456789") == 0x29B1
-    key = key_from_pin(VEC_PIN)
+    key = key_from_secret(VEC_SECRET)
+    assert parse_app_qr(app_qr(VEC_UID, VEC_SECRET)) == (VEC_UID, VEC_SECRET)
+    assert parse_app_qr("WONFC:1:" + VEC_UID + ":" + VEC_SECRET.hex()) is None       # v1 的 QR 不收
+    assert parse_app_qr("WONFC:2:" + VEC_UID + ":ZZ" + VEC_SECRET.hex()[2:]) is None  # 不是十六進位
     req = encode_request(VEC_CFG, 7, key)
     assert len(req) == 112
     st = encode_state(VEC_CFG, 8, 0x00030301, b"3.3\0")

@@ -20,7 +20,7 @@
 | D4 | 4 路 DI = 4 個接點感測器（Contact Sensor／Boolean State），DI 設成「全關」時也照樣回報 | 使用者 |
 | D5 | HA 使用者可在 HA 用下拉選單改 DI／DO 模式與點動時間（Mode Select），**V4.0 就做** | 使用者 |
 | D6 | Apple／Google 使用者用 NFC App 改進階設定（不用 Wi-Fi 熱點） | 使用者 |
-| D7 | NFC App 的密碼改用 Matter 配對碼，標籤只印一組碼；NFC 協定升級 v2 | 使用者 |
+| D7 | NFC 密碼改用**每台 128-bit 隨機金鑰**，標籤在 Matter QR 旁多印一個 App QR；NFC 協定 v2（原本想用 Matter 配對碼，查證後不可行，見 §5） | 使用者，10/06 改選 |
 | D8 | 測試先用使用者的 ESP32-C6 開發板（LED 代替繼電器），之後再上 V3.4 打樣板 | 使用者 |
 
 ## 3. Matter 資料模型（裝置組成）
@@ -53,7 +53,7 @@
 ## 5. 配對與 NFC
 
 - **配對方式**：藍牙（BLE），用 Matter QR code 或 11 位數手動配對碼。配對完成後關閉藍牙。
-- **NFC 協定 v2**：密鑰改由 Matter 配對碼推出，App 掃一次 QR 就能配對又能改設定（**待查證**：裝置執行時是否拿得到 passcode；esp-matter 的 factory 資料通常只存 SPAKE2+ verifier）。
+- **NFC 協定 v2（已完成）**：每台 128-bit 隨機金鑰，標籤印 App QR `WONFC:2:<UID>:<secret>`。不用 Matter 配對碼的原因：裝置執行時拿不到配對碼（工廠資料只存 SPAKE2+ 驗證資料），而且 27 bit 可被離線暴力破解，破了連配對秘密一起洩漏。規格見 `docs/nfc-protocol.md` §5。
 - **NFC 一碰配對**（**待查證**）：Matter 規格允許把配對資料放在 NFC 標籤，ST25DV 可以放 NDEF。要確認 iOS／Android 是否支援。
 
 ## 6. 按鍵與指示燈
