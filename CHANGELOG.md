@@ -35,8 +35,17 @@ IRM-02-12 額定 12V 167mA。ESP32-C6 Zigbee 發射 +12dBm 峰值 185mA@3.3V，�
 - 原本想用 Matter 配對碼當金鑰，查證後不可行：裝置執行時拿不到配對碼，而且 27 bit 可被暴力破解。
 - 驗證：C 與 Python 新向量逐 byte 一致，主機測試 40/40；`docs/nfc-protocol.md` 已同步。
 
-### 網路層（進行中）
+### 網路層：Zigbee → Matter（編譯通過，尚未上機）
 - `fa_net.h` 網路層介面、`fa_modes`（HA 下拉選單 ↔ 設定）、`docs/v4-matter-spec.md` 規格草稿。
+- 新增 `main/fa_matter.cpp`（esp-matter release/v1.6，ESP-IDF v5.5.5），刪除 `fa_zigbee.c/.h`。Endpoint：
+  1–4 插座（K1–K4）、5–8 接點感測器（DI1–DI4）、9–20 Mode Select（每路 DI 模式／K 模式／點動時間）。
+- 互鎖、同時吸合上限沿用 `fa_core`；controller 開了被拒的那一路時，屬性會打回實際狀態。
+- Thread 發射功率限制在 `CONFIG_FA_TX_POWER`（預設 10 dBm，原 `FA_ZB_TX_POWER`）：IDF 802.15.4 預設 +20 dBm 超過 IRM-02-12 電源預算。
+- 恢復出廠只清 Matter 的 NVS；NFC 金鑰、DI／DO 設定在 "fa" namespace 不受影響（設定由按鍵／NFC 的重置流程另外清）。
+- 分割表改成 8MB：雙 OTA 各 3MB、`fctry` 給 Matter 工廠資料。映像 1.68 MB（ota_0 的 53%）。
+- 另有「Matter over Wi-Fi」測試版（`sdkconfig.defaults.wifi_test`）：沒有 Thread 邊界路由器時用 chip-tool 驗證。
+- CI：建置改用 `espressif/idf:v5.5.5`＋固定版本的 esp-matter（快取），Thread 與 Wi-Fi 兩版都編。
+- NFC STATE 回報的韌體版本改為 4.0.0、硬體版本 3.4。
 
 ## [3.4] — 照外殼 4-02-3 放回原板框
 

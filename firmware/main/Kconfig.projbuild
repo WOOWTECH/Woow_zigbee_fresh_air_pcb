@@ -51,12 +51,14 @@ menu "WO30109 新風控制器"
             PWM 保持（預設）：3 顆保持＋1 顆吸合＋發射 ≈ 127mA，可以 4 顆全開（吸合錯開 ≥ FA_RELAY_PULLIN_MS）。
             全壓驅動：4 顆＋發射峰值約 191mA，超過保護點，所以上限 3。
 
-    config FA_ZB_TX_POWER
-        int "802.15.4 發射功率 (dBm)"
+    config FA_TX_POWER
+        int "802.15.4（Thread）發射功率 (dBm)"
         range -15 20
         default 10
         help
-            +10dBm 峰值約 165mA@3.3V（12V 側 +30mA，毫秒級）。+20dBm 峰值 302mA 會讓 12V 電源瞬間超過 110% 保護點。
+            ESP-IDF 的 802.15.4 驅動預設開到最大（ESP32-C6 為 +20dBm），峰值約 302mA@3.3V，會讓 12V 電源
+            （IRM-02-12）瞬間超過 110% 保護點；+10dBm 峰值約 165mA@3.3V（12V 側 +30mA，毫秒級），電源預算以此計算。
+            Thread 啟動後由 fa_matter.cpp 設定。
     config FA_INTERLOCK_DEAD_MS
         int "風速切換：斷開到吸合的間隔 (ms)"
         default 200

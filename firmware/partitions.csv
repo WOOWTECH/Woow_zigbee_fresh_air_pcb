@@ -1,6 +1,9 @@
-# Name,   Type, SubType, Offset,  Size, Flags
-nvs,        data, nvs,      ,        0x6000,
-otadata,    data, ota,      ,        0x2000,
-phy_init,   data, phy,      ,        0x1000,
-factory,    app,  factory,  ,        2M,
-zb_fct,     data, fat,      ,        1K,
+# Name,   Type, SubType, Offset,   Size,     Flags
+# V4（Matter）：8MB flash。nvs 加大（Matter fabric、OpenThread、app 設定共用）；OTA 雙分區給之後的 Matter OTA；
+# fctry 放 Matter 工廠資料（DAC、配對碼的 SPAKE2+ 驗證資料；開發期用 esp-matter 內建測試憑證，不必燒）
+nvs,      data, nvs,     0x9000,   0xC000,
+otadata,  data, ota,     0x15000,  0x2000,
+phy_init, data, phy,     0x17000,  0x1000,
+ota_0,    app,  ota_0,   0x20000,  0x300000,
+ota_1,    app,  ota_1,   0x320000, 0x300000,
+fctry,    data, nvs,     0x620000, 0x6000,

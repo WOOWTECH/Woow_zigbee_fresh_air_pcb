@@ -1,0 +1,6 @@
+# 開發測試用（沒有 Thread 邊界路由器時）：Matter over Wi-Fi，用 Linux chip-tool 透過 BLE 配對
+# idf.py -B build_wifi -D SDKCONFIG=sdkconfig.wifi_test -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.wifi_test" build
+# 注意：Wi-Fi 發射峰值超過 V3.4 板子的 IRM-02 電源預算，只能在開發板（USB 供電）上用
+CONFIG_OPENTHREAD_ENABLED=n
+CONFIG_ENABLE_WIFI_STATION=y
+CONFIG_USE_BLE_ONLY_FOR_COMMISSIONING=y

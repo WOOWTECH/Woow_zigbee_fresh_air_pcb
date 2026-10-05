@@ -73,7 +73,7 @@
 
 ## 7. 開發與測試計畫
 
-- **建置**：esp-matter（**待查證**：安裝方式、和 IDF 5.5.4 的相容版本）。
+- **建置**：ESP-IDF v5.5.5 ＋ esp-matter release/v1.6（commit `c6607128`）。安裝腳本見 CI（`.github/workflows/firmware-ci.yml`），需要 `python3-dev`。
 - **沒有 Thread 邊界路由器時的測試**：同一份程式另編一個「Matter over Wi-Fi」的測試版本（ESP32-C6 有 Wi-Fi），用這台電腦的 Linux chip-tool 透過藍牙配對，驗證資料模型、開關、感測器、Mode Select、互鎖。正式版本是 Thread。
 - **要實機驗證的項目**：Apple Home／Google Home／HA 的實際顯示（需要 Thread 邊界路由器）。
 - **主機單元測試**：`fa_core` 照舊；新增「Matter 屬性 ↔ fa_io 設定」轉換的單元測試（點動級距、選項對應）。

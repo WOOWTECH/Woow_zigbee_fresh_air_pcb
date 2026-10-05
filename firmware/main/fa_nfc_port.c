@@ -12,8 +12,8 @@
 #include "st25dv.h"
 
 static const char *TAG = "nfc";
-#define FW_VERSION 0x00030300                      /* 3.3.0 */
-static const char HW_REV[4] = "3.3";
+#define FW_VERSION 0x00040000                      /* 4.0.0 */
+static const char HW_REV[4] = "3.4";
 
 static fa_nfc_port_cb_t s_cb;
 static uint8_t           s_key[32];

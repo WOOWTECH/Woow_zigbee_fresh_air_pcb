@@ -1,10 +1,10 @@
-/* WO_30109 新風控制器 V3.0 主程式：硬體（GPIO／中斷／NVS）接到 fa_core 純邏輯與 Zigbee。
+/* WO_30109 新風控制器 V4 主程式：硬體（GPIO／中斷／NVS）接到 fa_core 純邏輯與網路層（Matter）。
  *
  * 執行緒
- *   relay_task   依動作清單切繼電器（先斷後通、吸合錯開），完成後同步 Zigbee 屬性
+ *   relay_task   依動作清單切繼電器（先斷後通、吸合錯開），完成後同步網路層屬性
  *   rf_task      SYN480R DO 腳邊緣中斷 → 脈寬 → EV1527 解碼 → 學習／控制
  *   ui_task      每 10ms 掃按鍵、更新燈號
- *   網路層       fa_net.h（V3.x Zigbee：fa_zigbee.c；V4 Matter：fa_matter.cpp）
+ *   網路層       fa_net.h → fa_matter.cpp（V3.x 的 Zigbee 版在標籤 v3.4）
  */
 #include <string.h>
 
@@ -49,7 +49,7 @@ static uint32_t now_ms(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
 /* ---------------- 繼電器 ---------------- */
 #define SYNC_MARK 0xFF
 
-/* n > 0：執行動作後同步；n < 0（被拒絕）：只同步，把 Zigbee 屬性打回實際狀態；
+/* n > 0：執行動作後同步；n < 0（被拒絕）：只同步，把網路層屬性打回實際狀態；
  * n == 0（狀態沒變）：什麼都不送——否則本地同步屬性若又觸發寫入回呼，會無限循環 */
 static void post_actions(const fa_action_t *a, int n)
 {
@@ -239,7 +239,7 @@ static void relay_task(void *arg)
     }
 }
 
-static bool zb_on_set(uint8_t ch, bool on)
+static bool net_on_set(uint8_t ch, bool on)
 {
     int n = relay_set(ch, on);
     return n >= 0;
@@ -411,7 +411,7 @@ static void nfc_factory_reset(void) { factory_reset(); }
 /* ---------------- 按鍵、燈號 ---------------- */
 static void factory_reset(void)
 {
-    ESP_LOGW(TAG, "恢復出廠：全部繼電器關、清除遙控器與 DI/DO 設定、Zigbee 離網");
+    ESP_LOGW(TAG, "恢復出廠：全部繼電器關、清除遙控器與 DI/DO 設定、清除 Matter 配對");
     apply(fa_relays_all_off);
     xSemaphoreTake(s_lock, portMAX_DELAY);
     fa_remotes_init(&s_remotes);
@@ -526,8 +526,8 @@ void app_main(void)
     for (int k = 0; k < FA_CH; k++)
         ESP_LOGI(TAG, "K%d：DI %s／DO %s（點動 %lums）", k + 1, DI_NAME[cfg.di_mode[k]], DO_NAME[cfg.do_mode[k]],
                  (unsigned long)cfg.jog_ms[k]);
-    ESP_LOGI(TAG, "互鎖群組 0x%x；同時吸合上限 %d；Zigbee 發射 %ddBm", fa_io_interlock_mask(&cfg),
-             CONFIG_FA_MAX_RELAYS_ON, CONFIG_FA_ZB_TX_POWER);
+    ESP_LOGI(TAG, "互鎖群組 0x%x；同時吸合上限 %d；Thread 發射 %ddBm", fa_io_interlock_mask(&cfg),
+             CONFIG_FA_MAX_RELAYS_ON, CONFIG_FA_TX_POWER);
     remotes_load();
     name_load_save(false);
 
@@ -543,7 +543,7 @@ void app_main(void)
     fa_nfc_port_start(PIN_NFC_SDA, PIN_NFC_SCL, &nfc_cb);
 #endif
     {
-        static const fa_net_cb_t net_cb = {.on_set = zb_on_set, .on_cfg = net_on_cfg};
+        static const fa_net_cb_t net_cb = {.on_set = net_on_set, .on_cfg = net_on_cfg};
         xSemaphoreTake(s_lock, portMAX_DELAY);
         fa_io_cfg_t cfg_now = s_io.cfg;
         xSemaphoreGive(s_lock);

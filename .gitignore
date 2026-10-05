@@ -32,5 +32,8 @@ sim/*.csv
 firmware/build/
 firmware/sdkconfig
 firmware/sdkconfig.old
+firmware/build_wifi/
+firmware/sdkconfig.wifi_test
+firmware/sdkconfig.wifi_test.old
 firmware/managed_components/
 firmware/test/test_core

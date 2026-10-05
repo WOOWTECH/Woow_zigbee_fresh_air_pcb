@@ -20,18 +20,47 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     container:
-      image: espressif/idf:v5.5.4      # esp-zigbee-sdk v2 建議版本
+      image: espressif/idf:v5.5.5
+    env:
+      ESP_MATTER_REF: c6607128fedc83cb65d6324c14d3e4d7a4d6bd0a   # release/v1.6，與本機開發環境同一版
+      ESP_MATTER_PATH: /opt/esp-matter
     steps:
       - uses: actions/checkout@v5
-      - name: idf.py build（esp32c6）
+      - name: 快取 esp-matter（含 connectedhomeip 與 pigweed 環境）
+        id: matter-cache
+        uses: actions/cache@v4
+        with:
+          path: /opt/esp-matter
+          key: esp-matter-${{ env.ESP_MATTER_REF }}-idf5.5.5
+      - name: 安裝 esp-matter（快取沒命中才跑）
+        if: steps.matter-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
+          apt-get update -q && apt-get install -yq python3-dev libssl-dev libffi-dev pkg-config
           . $IDF_PATH/export.sh
+          git init -q $ESP_MATTER_PATH && cd $ESP_MATTER_PATH
+          git remote add origin https://github.com/espressif/esp-matter.git
+          git fetch -q --depth 1 origin $ESP_MATTER_REF && git checkout -q FETCH_HEAD
+          git submodule update --init --depth 1 -q
+          cd connectedhomeip/connectedhomeip && ./scripts/checkout_submodules.py --platform esp32 linux --shallow
+          cd $ESP_MATTER_PATH && ./install.sh --no-host-tool
+      - name: idf.py build（Matter over Thread 正式版）
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh && . $ESP_MATTER_PATH/export.sh
           cd firmware
           idf.py set-target esp32c6
           idf.py build
           idf.py size | tail -20
+      - name: idf.py build（Matter over Wi-Fi 測試版）
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh && . $ESP_MATTER_PATH/export.sh
+          cd firmware
+          idf.py -B build_wifi -D SDKCONFIG=sdkconfig.wifi_test \
+            -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.wifi_test" set-target esp32c6 build
       - uses: actions/upload-artifact@v5
         with:
           name: firmware-${{ github.sha }}
@@ -40,3 +69,4 @@ jobs:
             firmware/build/bootloader/bootloader.bin
             firmware/build/partition_table/partition-table.bin
             firmware/build/flash_args
+            firmware/build_wifi/wo30109_fresh_air.bin
