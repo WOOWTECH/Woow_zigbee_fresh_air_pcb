@@ -3,6 +3,8 @@
 腳位來源：
   ESP32-C6-WROOM-1  Espressif 規格書 v1.4 Table 3-1（29 腳，EPAD=29）
   SYN480R           JSMSEMI SYN480R 規格書「管腳定義」（SOP-8）
+  TLP290-4          Toshiba TLP290-4 規格書 Pin Configuration（SO16，交流輸入光耦 ×4）；KiCad Isolator:TLP290-4 是 4 單元，
+                    原理圖產生器一次只放一個單元，所以做成單一單元。腳位：LED 1-2/3-4/5-6/7-8，集極 16/14/12/10、射極 15/13/11/9
 """
 import os, re
 
@@ -58,6 +60,16 @@ def syn480r():
                   "JSMSEMI SYN480R 300-440MHz ASK/OOK receiver, SOP-8", (-7.62, 6.35, 7.62, -6.35), pins)
 
 
+def tlp290_4():
+    pins = []
+    for ch in range(4):
+        y = 7.62 - ch * 5.08
+        pins += [("passive", -10.16, y, 0, f"A{ch + 1}", 2 * ch + 1), ("passive", -10.16, y - 2.54, 0, f"K{ch + 1}", 2 * ch + 2),
+                 ("open_collector", 10.16, y, 180, f"C{ch + 1}", 16 - 2 * ch), ("passive", 10.16, y - 2.54, 180, f"E{ch + 1}", 15 - 2 * ch)]
+    return symbol("TLP290-4", "U", "Package_SO:SOP-16_4.55x10.3mm_P1.27mm",
+                  "Toshiba TLP290-4 quad AC-input phototransistor optocoupler, SO16, 2.5kVrms", (-7.62, 10.16, 7.62, -12.7), pins)
+
+
 def crystal4():
     # KiCad 內建 Device:Crystal_GND24 經 kicad-sch-api 寫出後 KiCad 讀不回來，另做一個等效符號
     pins = [("passive", -7.62, 0, 0, "X1", 1), ("passive", 7.62, 0, 180, "X2", 3),
@@ -68,7 +80,7 @@ def crystal4():
 
 def main():
     s = open(LIB).read()
-    for name, body in (("ESP32-C6-WROOM-1", esp32c6()), ("SYN480R", syn480r()), ("Crystal_4P", crystal4())):
+    for name, body in (("ESP32-C6-WROOM-1", esp32c6()), ("SYN480R", syn480r()), ("Crystal_4P", crystal4()), ("TLP290-4", tlp290_4())):
         m = re.search(rf'\n\t\(symbol "{re.escape(name)}"\n.*?\n\t\)\n', s, re.S)
         if m:
             s = s[:m.start() + 1] + body + s[m.end():]

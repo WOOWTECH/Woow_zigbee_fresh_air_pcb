@@ -12,6 +12,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from make_jlc_files import FOOTPRINTS, solve_rotation  # noqa: E402
 
 JLC = json.load(open(FOOTPRINTS))
+# BOM 已經不用、但測試仍要的料號（快取會隨 BOM 刪掉）：焊盤座標直接寫在這裡，測試不依賴目前 BOM
+FIXTURE_PADS = {"C7421516": {"1": [[-0.63, 3.59]], "2": [[0.64, 3.59]], "3": [[0.64, -3.59]], "4": [[-0.63, -3.59]]}}
+for _code, _pads in FIXTURE_PADS.items():
+    JLC.setdefault(_code, {"footprint": "fixture", "pads": _pads})
 
 BOARD = {
     # 位號: (LCSC, 背面?, {焊盤: [(x, y)]}, 期望角度)

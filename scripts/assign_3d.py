@@ -14,8 +14,9 @@ for path in glob.glob(os.path.join(ROOT, "hardware/lib/WOOW.pretty/*.kicad_mod")
     s = re.sub(r'\n\t\(model .*?\n\t\)', '', s, flags=re.S)                      # KiCad 10 多行格式
     s = re.sub(r'\t\(model "[^"]*"[^\n]*\n(\t\t[^\n]*\n)*?\t\)\n', '', s)
     blk = '\t(model "%s"\n\t\t(offset (xyz 0 0 0))\n\t\t(scale (xyz 1 1 1))\n\t\t(rotate (xyz 0 0 0))\n\t)\n' % (MODEL % name)
-    s = s.rstrip().rstrip(')') + '\n' + blk + ')\n'
-    open(path, 'w').write(s)
+    s = s.rstrip().rstrip(')').rstrip() + '\n\n' + blk + ')\n'   # 固定一行空行：重跑不會越疊越多
+    if s != open(path).read():
+        open(path, 'w').write(s)
 # 2) 板子上的封裝
 b = pcbnew.LoadBoard(PCB); n = 0
 for fp in b.GetFootprints():

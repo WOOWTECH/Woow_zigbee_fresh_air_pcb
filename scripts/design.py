@@ -5,6 +5,7 @@
   * VERSION="1.3"：照原設計 V1.3（2025-08-28 PDF 原理圖）重繪，不改任何電路。
   * VERSION="2.0"：改版，差異寫在 CHANGES。
   * VERSION="3.0"：STM32＋Tuya ZS3L＋EPA09-4D → ESP32-C6 單晶片（Zigbee 3.0）＋SYN480R 433MHz 接收，差異寫在 CHANGES。
+  * VERSION="3.2"：加 4 路光耦 DI（J5、U5 TLP290-4）、拿掉指撥 S1，板子上緣加長 10mm。
   * VERSION="3.1"：只換值不改板：433 匹配 C15/C16/L3/L4 重新選值、D1–D4 改 Schottky B5819W（配合韌體 PWM 保持）。
 """
 R0603 = "Resistor_SMD:R_0603_1608Metric"
@@ -20,6 +21,7 @@ def build(version="2.0"):
 
     v3 = version.startswith("3")
     v31 = v3 and tuple(map(int, version.split("."))) >= (3, 1)   # V3.1：433 匹配值、續流 Schottky
+    v32 = v3 and tuple(map(int, version.split("."))) >= (3, 2)   # V3.2：4 路光耦 DI、拿掉指撥
     v2 = version.startswith("2") or v3          # V3.0 沿用 V2.0 的市電、電源、繼電器
 
     # ---------------- 市電輸入 ----------------
@@ -65,6 +67,9 @@ def build(version="2.0"):
                     "6": "Relay_1", "7": "Relay_2", "8": "Relay_3", "9": "Relay_4",
                     "10": "IO8", "11": "Mode_bit0", "12": "Mode_bit1", "15": "BOOT",
                     "21": "RF_DATA", "24": "U0RXD", "25": "U0TXD", "27": "LED"})
+        if v32:   # 指撥拿掉（IO10/IO11 空出）。DI1–4 接上排 IO22/IO21/IO20/IO19（20–17 腳）：U5 就在正上方約 16mm，
+                  # 背面直上、不經模組底下；左右順序與 U5 輸出一致不交叉；避開 433 匹配網路（x>120.9）。皆非 strapping 腳
+            esp.update({"11": None, "12": None, "20": "DI_1", "19": "DI_2", "18": "DI_3", "17": "DI_4"})
         add("U1", "WOOW:ESP32-C6-WROOM-1", "ESP32-C6-WROOM-1-N8", "WOOW:Espressif_ESP32-C6-WROOM-1", "C5366877", esp)
         add("C1", "Device:C", "22uF 25V", C0805, "C45783", {"1": "+3V3", "2": "GND"})       # 模組 3V3 腳旁（規格書 Fig.9-1）
         add("C2", "Device:C", "100nF", C0603, "C14663", {"1": "+3V3", "2": "GND"})
@@ -101,8 +106,9 @@ def build(version="2.0"):
 
         # ---------------- 使用者介面 ----------------
         add("B1", "Switch:SW_Push", "ZX-QC66-4.3TP", "WOOW:SW_Push_6x6mm_SMD_ZX-QC66", "C7470150", {"1": "GND", "2": "BOOT"})
-        add("S1", "Switch:SW_DIP_x02", "DIP 2P", "Button_Switch_SMD:SW_DIP_SPSTx02_Slide_Copal_CHS-02B_W7.62mm_P1.27mm", "C7421516",
-            {"1": "Mode_bit1", "2": "Mode_bit0", "3": "GND", "4": "GND"})
+        if not v32:
+            add("S1", "Switch:SW_DIP_x02", "DIP 2P", "Button_Switch_SMD:SW_DIP_SPSTx02_Slide_Copal_CHS-02B_W7.62mm_P1.27mm", "C7421516",
+                {"1": "Mode_bit1", "2": "Mode_bit0", "3": "GND", "4": "GND"})
         add("P2", "Connector_Generic:Conn_02x03_Odd_Even", "PROG", "Connector_PinHeader_2.54mm:PinHeader_2x03_P2.54mm_Vertical", "",
             {"1": "+3V3", "2": "GND", "3": "U0TXD", "4": "U0RXD", "5": "EN", "6": "BOOT"})   # 1×6 直排會壓到 H3
     else:
@@ -152,6 +158,23 @@ def build(version="2.0"):
         add("RF1", "WOOW:EPA09-4D", "EPA09-4D", "WOOW:Ebelong_EPA09-4D", "",
             {"1": "RF_1", "2": "RF_2", "3": "RF_3", "4": "RF_4", "5": "+3V3", "6": "GND"})
 
+    # ---------------- V3.2：4 路 DI（乾接點／5–24VDC，光耦隔離）----------------
+    if v32:
+        # J5：+12V（經 R23 1.5k 限流：短路 8mA／0.096W，1206 0.25W 可長期短路；4 路全接通每路仍有 1.16mA）｜IN1–IN4｜COM｜GND
+        #   乾接點：+12V →接點→ INx，COM 接 GND（端子上跳線）。PLC／外部 DC：INx 與 COM 之間 5–24V，NPN、PNP 都可
+        #   （TLP290-4 是交流輸入光耦，LED 反向並聯，不分極性）。R15–R18 3.3k：5V 時 1.15mA、24V 時 6.9mA／0.16W（1206 0.25W）
+        #   輸出：集極接 ESP32 GPIO（韌體開內建上拉 ~45k）＋10nF 到地（τ≈0.45ms，其餘由韌體防彈跳），接通＝低電位。
+        #   不用外部上拉：光耦導通只需吸 ~73µA，CTR 綽綽有餘；10nF 讓這條約 5cm 的線在高頻是低阻抗、不易拾取雜訊
+        add("J5", "Connector_Generic:Conn_01x07", "DI 12V/IN1-4/COM/GND", "WOOW:TerminalBlock_Pluggable_1x07_P3.50mm_Horizontal", "",
+            {"1": "+12V_DI", "2": "DI_IN1", "3": "DI_IN2", "4": "DI_IN3", "5": "DI_IN4", "6": "DI_COM", "7": "GND"})
+        add("R23", "Device:R", "1.5k", "Resistor_SMD:R_1206_3216Metric", "C26030", {"1": "+12V", "2": "+12V_DI"})
+        opto = {}
+        for k in range(1, 5):
+            add(f"R{14 + k}", "Device:R", "3.3k", "Resistor_SMD:R_1206_3216Metric", "C26032", {"1": f"DI_IN{k}", "2": f"DI_A{k}"})
+            add(f"C{17 + k}", "Device:C", "10nF", C0603, "C57112", {"1": f"DI_{k}", "2": "GND"})
+            opto.update({str(2 * k - 1): f"DI_A{k}", str(2 * k): "DI_COM", str(18 - 2 * k): f"DI_{k}", str(17 - 2 * k): "GND"})
+        add("U5", "WOOW:TLP290-4", "TLP290-4", "Package_SO:SOP-16_4.55x10.3mm_P1.27mm", "C39031", opto)
+
     # ---------------- 4 路繼電器 ----------------
     nc = {1: None, 2: None, 3: "DO_3_NC", 4: "DO_4_NC"}
     for k in range(1, 5):
@@ -181,6 +204,11 @@ MAINS = {"AC_L_IN", "AC_L", "AC_N", "DO_COM", "DO_1_NO", "DO_2_NO", "DO_3_NO", "
 POWER_FLAGS = ["+12V", "+3V3", "GND", "AC_L", "AC_N", "AC_L_IN"]
 
 CHANGES = {
+    "3.2": [
+        "J5 7P 3.5mm 插拔端子：+12V（R23 1.5k 限流，短路 8mA）／IN1–IN4／COM／GND；U5 TLP290-4 交流輸入光耦（NPN/PNP、乾接點都可）",
+        "DI1–DI4 → IO22/IO21/IO20/IO19（ESP32 內建上拉＋10nF）；S1 指撥拿掉（IO10/IO11 空出），模式改軟體設定",
+        "板子上緣加長 10mm 放 J5；市電區與繼電器區佈線不動",
+    ],
     "3.1": [
         "433 匹配：C15 6.8p→2.7p、C16 1.8p→2.7p（C162221，±0.1pF）、L3 27n→47n（C29683）、L4 47n→33n（C35050）；拓撲與佈線不變",
         "D1–D4 1N4148W → B5819W Schottky（C8598，基礎料、同 SOD-123）：配合韌體 PWM 降壓保持，續流 Vf ≤0.4V",

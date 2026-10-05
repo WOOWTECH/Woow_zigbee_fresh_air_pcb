@@ -8,6 +8,7 @@ import mains_router
 PCB = os.path.abspath(os.path.join(HERE, "..", "hardware", "WO30109_FreshAir", "WO30109_FreshAir.kicad_pcb"))
 MAINS = lambda n: n.startswith("/AC_") or n.startswith("/DO_") or n.startswith("unconnected-(K")
 b = pcbnew.LoadBoard(PCB)
+mains_router.set_board(mains_router.board_height(b))
 # Router 的 is_mains 參數意思是「與我同一類（用小間距）」：這裡同類 = 低壓
 R = mains_router.Router(b, lambda n: not MAINS(n), cl_mm=0.15, selv_cl_mm=6.5, width=0.2, edge=0.5, npth_cl=0.5)
 for net in sys.argv[1:]:
