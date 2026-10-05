@@ -1,27 +1,91 @@
-* SYN480R 433.92MHz 輸入匹配（規格書典型應用值）：天線 → C16∥L3 → C15 串 → L4∥晶片輸入
-* 晶片輸入阻抗規格書未給，用 R_in ∥ C_in 掃三組（1.0/2.0/3.0pF）看峰值頻率落點
-.param cin=2p
-Vs src 0 AC 1
-Rs src ant 50
-C16 ant 0 1.8p
-L3 ant 0 27n
-C15 ant in 6.8p
-L4 in 0 47n
-Rin in 0 1k
-Cin in 0 {cin}
-Cpad in 0 0.3p
+* SYN480R 433.92MHz 輸入匹配：天線 → L3∥C16 並聯 → C15 串聯 → L4 並聯∥晶片 ANT 腳（PCB 拓撲不變）
+*
+* 晶片輸入阻抗：SYN480R 規格書沒有給。它的腳位、規格表數行與 Micrel MICRF010 逐字相同，晶振頻率同 MICRF211，
+* 所以用同系列原廠實測值當範圍（串聯 R + C，433.92MHz）：
+*   MICRF010 Table 2   13.15 − j107Ω  → 13Ω + 3.43pF
+*   MICRF211 Table 4   18.6 − j174Ω   → 19Ω + 2.11pF
+*   MICRF220 Table 6   12 − j209Ω     → 12Ω + 1.75pF
+* 原廠數值已含評估板焊墊寄生，不另外加。
+*
+* V3.0 用的是 SYN480R 規格書「典型應用」值（L3 27n、C16 1.8p、C15 6.8p、L4 47n）。照這三個阻抗算，峰值都落在
+* 210–230MHz 或 700MHz，433.92MHz 失配損耗 8–13dB；那組值看起來是 MICRF010 的 L 型匹配（串 1.8p＋並 27n）
+* 被畫到錯的位置。V3.1 在 E 系列可買到的值裡，以「三個阻抗 × 電感 ±5% × 電容 ±0.1pF」的最差情況最小化，
+* 選 L3 47n、C16 2.7p、C15 2.7p、L4 33n（scripts/rf_match_opt.py；C16 取 2.7p 而不是第一名的 3.3p，
+* 是為了和 C15 同料號、少一個擴展料上料費，兩者最差情況只差 0.02dB）。打樣後仍要用 VNA 量 S11 微調。
+*
+* 量測：ML433_<值>_<晶片> = 433.92MHz 失配損耗 dB（晶片電阻吸收功率相對 50Ω 源可用功率），
+*       MLMIN／FPK = 200–700MHz 內最小損耗與其頻率。v30 = V3.0 規格書值，v31 = V3.1 新值
+.subckt match ant in l3=27n c16=1.8p c15=6.8p l4=47n
+* 電感 Q 取 40（0603 疊層電感在 433MHz 的典型值），用並聯電阻表示損耗
+L3 ant 0 {l3}
+RL3 ant 0 {2*3.14159*433.92e6*l3*40}
+C16 ant 0 {c16}
+C15 ant in {c15}
+L4 in 0 {l4}
+RL4 in 0 {2*3.14159*433.92e6*l4*40}
+.ends
+V_v30_micrf010 s_v30_micrf010 0 AC 1
+R_v30_micrf010 s_v30_micrf010 a_v30_micrf010 50
+X_v30_micrf010 a_v30_micrf010 i_v30_micrf010 match l3=27n c16=1.8p c15=6.8p l4=47n
+C_v30_micrf010 i_v30_micrf010 x_v30_micrf010 3.43p
+Rc_v30_micrf010 x_v30_micrf010 m_v30_micrf010 13
+Vm_v30_micrf010 m_v30_micrf010 0 DC 0
+V_v30_micrf211 s_v30_micrf211 0 AC 1
+R_v30_micrf211 s_v30_micrf211 a_v30_micrf211 50
+X_v30_micrf211 a_v30_micrf211 i_v30_micrf211 match l3=27n c16=1.8p c15=6.8p l4=47n
+C_v30_micrf211 i_v30_micrf211 x_v30_micrf211 2.11p
+Rc_v30_micrf211 x_v30_micrf211 m_v30_micrf211 19
+Vm_v30_micrf211 m_v30_micrf211 0 DC 0
+V_v30_micrf220 s_v30_micrf220 0 AC 1
+R_v30_micrf220 s_v30_micrf220 a_v30_micrf220 50
+X_v30_micrf220 a_v30_micrf220 i_v30_micrf220 match l3=27n c16=1.8p c15=6.8p l4=47n
+C_v30_micrf220 i_v30_micrf220 x_v30_micrf220 1.75p
+Rc_v30_micrf220 x_v30_micrf220 m_v30_micrf220 12
+Vm_v30_micrf220 m_v30_micrf220 0 DC 0
+V_v31_micrf010 s_v31_micrf010 0 AC 1
+R_v31_micrf010 s_v31_micrf010 a_v31_micrf010 50
+X_v31_micrf010 a_v31_micrf010 i_v31_micrf010 match l3=47n c16=2.7p c15=2.7p l4=33n
+C_v31_micrf010 i_v31_micrf010 x_v31_micrf010 3.43p
+Rc_v31_micrf010 x_v31_micrf010 m_v31_micrf010 13
+Vm_v31_micrf010 m_v31_micrf010 0 DC 0
+V_v31_micrf211 s_v31_micrf211 0 AC 1
+R_v31_micrf211 s_v31_micrf211 a_v31_micrf211 50
+X_v31_micrf211 a_v31_micrf211 i_v31_micrf211 match l3=47n c16=2.7p c15=2.7p l4=33n
+C_v31_micrf211 i_v31_micrf211 x_v31_micrf211 2.11p
+Rc_v31_micrf211 x_v31_micrf211 m_v31_micrf211 19
+Vm_v31_micrf211 m_v31_micrf211 0 DC 0
+V_v31_micrf220 s_v31_micrf220 0 AC 1
+R_v31_micrf220 s_v31_micrf220 a_v31_micrf220 50
+X_v31_micrf220 a_v31_micrf220 i_v31_micrf220 match l3=47n c16=2.7p c15=2.7p l4=33n
+C_v31_micrf220 i_v31_micrf220 x_v31_micrf220 1.75p
+Rc_v31_micrf220 x_v31_micrf220 m_v31_micrf220 12
+Vm_v31_micrf220 m_v31_micrf220 0 DC 0
 .control
 set noaskquit
-foreach c 1.0p 2.0p 3.0p
-  alterparam cin = $c
-  reset
-  ac lin 2001 200meg 700meg
-  let g = db(abs(v(in))/0.5)
-  meas ac fpeak WHEN deriv(g)=0 FALL=1
-  meas ac gpeak MAX g
-  meas ac g433 FIND g AT=433.92meg
-  meas ac g315 FIND g AT=315meg
-  echo "cin=$c"
-end
+ac lin 2001 200meg 700meg
+let ml_v30_micrf010 = -10 * log10( 0.5 * mag(v(x_v30_micrf010)) * mag(i(Vm_v30_micrf010)) * 8 * 50 )
+meas ac ML433_v30_micrf010 FIND ml_v30_micrf010 AT=433.92meg
+meas ac MLMIN_v30_micrf010 MIN ml_v30_micrf010
+meas ac FPK_v30_micrf010 MIN_AT ml_v30_micrf010
+let ml_v30_micrf211 = -10 * log10( 0.5 * mag(v(x_v30_micrf211)) * mag(i(Vm_v30_micrf211)) * 8 * 50 )
+meas ac ML433_v30_micrf211 FIND ml_v30_micrf211 AT=433.92meg
+meas ac MLMIN_v30_micrf211 MIN ml_v30_micrf211
+meas ac FPK_v30_micrf211 MIN_AT ml_v30_micrf211
+let ml_v30_micrf220 = -10 * log10( 0.5 * mag(v(x_v30_micrf220)) * mag(i(Vm_v30_micrf220)) * 8 * 50 )
+meas ac ML433_v30_micrf220 FIND ml_v30_micrf220 AT=433.92meg
+meas ac MLMIN_v30_micrf220 MIN ml_v30_micrf220
+meas ac FPK_v30_micrf220 MIN_AT ml_v30_micrf220
+let ml_v31_micrf010 = -10 * log10( 0.5 * mag(v(x_v31_micrf010)) * mag(i(Vm_v31_micrf010)) * 8 * 50 )
+meas ac ML433_v31_micrf010 FIND ml_v31_micrf010 AT=433.92meg
+meas ac MLMIN_v31_micrf010 MIN ml_v31_micrf010
+meas ac FPK_v31_micrf010 MIN_AT ml_v31_micrf010
+let ml_v31_micrf211 = -10 * log10( 0.5 * mag(v(x_v31_micrf211)) * mag(i(Vm_v31_micrf211)) * 8 * 50 )
+meas ac ML433_v31_micrf211 FIND ml_v31_micrf211 AT=433.92meg
+meas ac MLMIN_v31_micrf211 MIN ml_v31_micrf211
+meas ac FPK_v31_micrf211 MIN_AT ml_v31_micrf211
+let ml_v31_micrf220 = -10 * log10( 0.5 * mag(v(x_v31_micrf220)) * mag(i(Vm_v31_micrf220)) * 8 * 50 )
+meas ac ML433_v31_micrf220 FIND ml_v31_micrf220 AT=433.92meg
+meas ac MLMIN_v31_micrf220 MIN ml_v31_micrf220
+meas ac FPK_v31_micrf220 MIN_AT ml_v31_micrf220
 .endc
 .end

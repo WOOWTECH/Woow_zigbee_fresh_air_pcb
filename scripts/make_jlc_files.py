@@ -79,12 +79,13 @@ def load_footprints():
     return json.load(open(FOOTPRINTS)) if os.path.exists(FOOTPRINTS) else {}
 
 
-def refresh_footprints(lcsc_codes):
-    """用 easyeda2kicad 下載每個料號的 EasyEDA 封裝，只留焊盤座標寫進 jlc_footprints.json。"""
+def refresh_footprints(lcsc_codes, force=False):
+    """用 easyeda2kicad 下載 EasyEDA 封裝，只留焊盤座標寫進 jlc_footprints.json。
+    預設只抓快取裡還沒有的料號（EasyEDA 連續抓約 20 筆會回 403），並刪掉 BOM 已經不用的料號；force＝全部重抓。"""
     if not shutil.which("easyeda2kicad"):
         sys.exit("需要 easyeda2kicad：pip install easyeda2kicad")
-    db = load_footprints()
-    for code in sorted(lcsc_codes):
+    db = {k: v for k, v in load_footprints().items() if k in lcsc_codes}
+    for code in sorted(c for c in lcsc_codes if force or c not in db):
         tmp = tempfile.mkdtemp()
         r = subprocess.run(["easyeda2kicad", "--footprint", f"--lcsc_id={code}", f"--output={tmp}/lib"],
                            capture_output=True, text=True)
@@ -209,8 +210,8 @@ def main():
     ap.add_argument("--rotations", help="本機的 cpl_rotations_db.csv（預設從 GitHub 下載最新版）")
     ap.add_argument("--check", action="store_true",
                     help="有料號不在 jlc_footprints.json 時以錯誤結束（CI 用，提醒換料後要 --refresh-footprints）")
-    ap.add_argument("--refresh-footprints", action="store_true",
-                    help="重新下載 BOM 所有料號的 EasyEDA 封裝，更新 jlc_footprints.json")
+    ap.add_argument("--refresh-footprints", nargs="?", const="missing", choices=["missing", "all"],
+                    help="下載 EasyEDA 封裝更新 jlc_footprints.json：預設只抓缺的料號（all＝全部重抓）")
     args = ap.parse_args()
     os.makedirs(OUT, exist_ok=True)
     rules = load_rules(args.rotations)
@@ -218,7 +219,7 @@ def main():
         import pcbnew
         b = pcbnew.LoadBoard(os.path.join(PRJ, NAME + ".kicad_pcb"))
         refresh_footprints({f.GetFieldText("LCSC") for f in b.GetFootprints()
-                            if f.HasField("LCSC") and f.GetFieldText("LCSC")})
+                            if f.HasField("LCSC") and f.GetFieldText("LCSC")}, force=args.refresh_footprints == "all")
     footprints = load_footprints()
     z = gerbers()
     groups, cpl, hand, unruled = bom_and_cpl(rules, footprints)
