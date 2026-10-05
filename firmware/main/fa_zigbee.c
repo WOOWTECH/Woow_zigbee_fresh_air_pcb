@@ -1,4 +1,5 @@
 #include "fa_zigbee.h"
+#include "fa_net.h"
 
 #include "esp_check.h"
 #include "esp_log.h"
@@ -17,9 +18,19 @@ static const char *TAG = "fa_zb";
 #define MODEL_ID          "\x0a""WO30109_FA"
 
 static fa_zb_set_cb_t s_on_set;
+static fa_net_cb_t    s_cb;
 static volatile bool  s_joined;
 
 bool fa_zigbee_joined(void) { return s_joined; }
+
+/* ---------- fa_net 介面（V3.x Zigbee 版）：DI 感測器與進階設定沒有對應的 Zigbee 端點，所以是空的 ---------- */
+static bool on_set_adapter(uint8_t ch, bool on) { return s_cb.on_set ? s_cb.on_set(ch, on) : false; }
+void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg) { (void)cfg; s_cb = *cb; fa_zigbee_start(on_set_adapter); }
+bool fa_net_joined(void) { return fa_zigbee_joined(); }
+void fa_net_sync(const bool on[4]) { fa_zigbee_sync(on); }
+void fa_net_report_di(uint8_t mask) { (void)mask; }
+void fa_net_report_cfg(const fa_io_cfg_t *cfg) { (void)cfg; }
+void fa_net_factory_reset(void) { fa_zigbee_factory_reset(); }
 
 /* ---------- 配網（BDB）重試：用 esp_timer，回呼裡取 Zigbee 鎖 ---------- */
 static void commission_cb(void *arg)

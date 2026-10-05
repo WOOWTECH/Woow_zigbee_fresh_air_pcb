@@ -4,7 +4,7 @@
  *   relay_task   依動作清單切繼電器（先斷後通、吸合錯開），完成後同步 Zigbee 屬性
  *   rf_task      SYN480R DO 腳邊緣中斷 → 脈寬 → EV1527 解碼 → 學習／控制
  *   ui_task      每 10ms 掃按鍵、更新燈號
- *   zigbee       見 fa_zigbee.c
+ *   網路層       fa_net.h（V3.x Zigbee：fa_zigbee.c；V4 Matter：fa_matter.cpp）
  */
 #include <string.h>
 
@@ -27,7 +27,7 @@
 #include "fa_nfc_port.h"
 #include "fa_relays.h"
 #include "fa_remotes.h"
-#include "fa_zigbee.h"
+#include "fa_net.h"
 
 static const char *TAG = "fa";
 
@@ -121,7 +121,6 @@ static void io_cfg_load(fa_io_cfg_t *c)
     if (!ok) io_cfg_default(c);
 }
 
-#if !CONFIG_FA_BOARD_V32                           /* 只有 NFC 會改 DI／DO 設定（V4 Matter 起 HA 也會） */
 static void io_cfg_save(const fa_io_cfg_t *c)
 {
     nvs_handle_t h;
@@ -130,7 +129,6 @@ static void io_cfg_save(const fa_io_cfg_t *c)
     nvs_commit(h);
     nvs_close(h);
 }
-#endif
 
 static void name_load_save(bool save)
 {
@@ -227,7 +225,7 @@ static void relay_task(void *arg)
             xSemaphoreTake(s_lock, portMAX_DELAY);
             memcpy(on, s_relays.on, sizeof on);
             xSemaphoreGive(s_lock);
-            fa_zigbee_sync(on);
+            fa_net_sync(on);
             continue;
         }
         if (a.delay_ms) vTaskDelay(pdMS_TO_TICKS(a.delay_ms));
@@ -328,6 +326,38 @@ static void rf_task(void *arg)
     }
 }
 
+/* ---------------- 套用 DI／DO 設定（NFC 與網路層 HA 下拉選單共用）----------------
+ * 互鎖分組變了就先全關再重新分組，避免新組合下出現不該同時吸合的狀態。呼叫端要持有 s_lock，
+ * 回傳要送給 relay_task 的動作數（在 a[] 裡），由呼叫端放掉鎖之後 post_actions */
+static int apply_io_cfg_locked(const fa_io_cfg_t *io, fa_action_t a[8])
+{
+    int n = 0;
+    uint8_t old_mask = fa_io_interlock_mask(&s_io.cfg), new_mask = fa_io_interlock_mask(io);
+    if (old_mask != new_mask) {
+        n = fa_relays_all_off(&s_relays, a, 8);
+        fa_relays_init_group(&s_relays, new_mask, CONFIG_FA_MAX_RELAYS_ON, CONFIG_FA_INTERLOCK_DEAD_MS);
+    }
+    fa_io_init(&s_io, io);                        /* DI 狀態重新偵測：接通中的「持續」接點會在 30ms 後重新作動 */
+    return n;
+}
+
+/* controller（HA 下拉選單）改了設定 */
+static bool net_on_cfg(const fa_io_cfg_t *io)
+{
+    if (!fa_io_cfg_valid(io)) return false;
+    fa_action_t a[8];
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    int n = apply_io_cfg_locked(io, a);
+    xSemaphoreGive(s_lock);
+    post_actions(a, n);
+    io_cfg_save(io);
+#if !CONFIG_FA_BOARD_V32
+    fa_nfc_port_publish();                        /* NFC 的 STATE 跟著更新（gen＋1） */
+#endif
+    ESP_LOGI(TAG, "網路層套用新設定：互鎖 0x%x", fa_io_interlock_mask(io));
+    return true;
+}
+
 /* ---------------- NFC 設定介面（V3.3）的 callback ---------------- */
 #if !CONFIG_FA_BOARD_V32
 static void nfc_get_cfg(fa_nfc_cfg_t *c)
@@ -345,14 +375,8 @@ static void nfc_get_cfg(fa_nfc_cfg_t *c)
 static void nfc_apply_cfg(const fa_nfc_cfg_t *c)
 {
     fa_action_t a[8];
-    int n = 0;
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    uint8_t old_mask = fa_io_interlock_mask(&s_io.cfg), new_mask = fa_io_interlock_mask(&c->io);
-    if (old_mask != new_mask) {
-        n = fa_relays_all_off(&s_relays, a, 8);
-        fa_relays_init_group(&s_relays, new_mask, CONFIG_FA_MAX_RELAYS_ON, CONFIG_FA_INTERLOCK_DEAD_MS);
-    }
-    fa_io_init(&s_io, &c->io);                    /* DI 狀態重新偵測：接通中的「持續」接點會在 30ms 後重新作動 */
+    int n = apply_io_cfg_locked(&c->io, a);
     fa_remotes_init(&s_remotes);
     for (int i = 0; i < c->n_remotes; i++) fa_remotes_add(&s_remotes, c->remotes[i]);
     memcpy(s_name, c->name, sizeof s_name);
@@ -362,7 +386,8 @@ static void nfc_apply_cfg(const fa_nfc_cfg_t *c)
     io_cfg_save(&c->io);
     remotes_save();
     name_load_save(true);
-    ESP_LOGI(TAG, "NFC 套用新設定：互鎖 0x%x、遙控器 %d 支、名稱「%s」", new_mask, c->n_remotes, s_name);
+    fa_net_report_cfg(&c->io);                    /* HA 的下拉選單跟著更新 */
+    ESP_LOGI(TAG, "NFC 套用新設定：互鎖 0x%x、遙控器 %d 支、名稱「%s」", fa_io_interlock_mask(&c->io), c->n_remotes, s_name);
 }
 
 static void nfc_get_status(fa_nfc_status_t *st)
@@ -373,7 +398,7 @@ static void nfc_get_status(fa_nfc_status_t *st)
         if (s_io.active[k]) st->di |= 1u << k;
     }
     xSemaphoreGive(s_lock);
-    st->net = fa_zigbee_joined();
+    st->net = fa_net_joined();
     st->flags = (s_learn_until_us && esp_timer_get_time() < s_learn_until_us) ? 1 : 0;
 }
 
@@ -393,10 +418,15 @@ static void factory_reset(void)
     xSemaphoreGive(s_lock);
     remotes_save();
     io_cfg_erase();
+    {
+        fa_io_cfg_t def;
+        io_cfg_default(&def);
+        fa_net_report_cfg(&def);
+    }
     strcpy(s_name, "WO30109"); name_load_save(true);
     fa_nfc_port_publish();                         /* gen＋1：重置前 App 手上的請求全部作廢 */
     vTaskDelay(pdMS_TO_TICKS(300));
-    fa_zigbee_factory_reset();
+    fa_net_factory_reset();
 }
 
 static bool led_pattern(uint32_t t, uint32_t held)
@@ -405,7 +435,7 @@ static bool led_pattern(uint32_t t, uint32_t held)
     if (held >= FA_BTN_LONG_MIN) return (t / 100) % 2;                     /* 3–8s：快閃＝放開進學習 */
     if (s_learn_until_us && esp_timer_get_time() < s_learn_until_us) return (t / 100) % 2;
     if (s_identify_until_us && esp_timer_get_time() < s_identify_until_us) return (t / 50) % 2;   /* NFC 找裝置 */
-    if (!fa_zigbee_joined()) return (t / 500) % 2;                         /* 尚未入網：慢閃 */
+    if (!fa_net_joined()) return (t / 500) % 2;                         /* 尚未入網：慢閃 */
     return true;                                                           /* 已入網：恆亮 */
 }
 
@@ -444,6 +474,14 @@ static void ui_task(void *arg)
             int n = fa_io_tick(&s_io, &s_relays, t, a, 8);
             xSemaphoreGive(s_lock);
             post_actions(a, n);
+        }
+        {                                                          /* DI 狀態（接線或遙控器）變了就回報（接點感測器） */
+            static uint8_t last_di = 0xFF;
+            uint8_t mask = 0;
+            xSemaphoreTake(s_lock, portMAX_DELAY);
+            for (int k = 0; k < FA_CH; k++) if (s_io.active[k]) mask |= 1u << k;
+            xSemaphoreGive(s_lock);
+            if (mask != last_di) { last_di = mask; fa_net_report_di(mask); }
         }
         gpio_set_level(PIN_LED, led_pattern(t, fa_button_held_ms(&btn, t)));
         vTaskDelay(pdMS_TO_TICKS(10));
@@ -504,5 +542,11 @@ void app_main(void)
                                             .factory_reset = nfc_factory_reset};
     fa_nfc_port_start(PIN_NFC_SDA, PIN_NFC_SCL, &nfc_cb);
 #endif
-    fa_zigbee_start(zb_on_set);
+    {
+        static const fa_net_cb_t net_cb = {.on_set = zb_on_set, .on_cfg = net_on_cfg};
+        xSemaphoreTake(s_lock, portMAX_DELAY);
+        fa_io_cfg_t cfg_now = s_io.cfg;
+        xSemaphoreGive(s_lock);
+        fa_net_start(&net_cb, &cfg_now);
+    }
 }

@@ -8,6 +8,7 @@
 #include "fa_io.h"
 #include "fa_sha256.h"
 #include "fa_nfc.h"
+#include "fa_modes.h"
 #include <string.h>
 
 int ul_fail, ul_run;
@@ -503,6 +504,41 @@ TEST(nfc_mailbox_auth_and_replay)
     CHECK_EQ(fa_nfc_mb_resp(out, 10, FA_NFC_MB_GET_STATUS, 1, FA_NFC_OK, st, FA_NFC_STATUS_LEN), 0);   /* 放不下 */
 }
 
+/* ---------------- V4 Mode Select（HA 下拉選單）對應 ---------------- */
+TEST(modes_counts_labels_and_bounds)
+{
+    CHECK_EQ(fa_sel_count(FA_SEL_DI), 3); CHECK_EQ(fa_sel_count(FA_SEL_DO), 3); CHECK_EQ(fa_sel_count(FA_SEL_JOG), 11);
+    CHECK(strcmp(fa_sel_label(FA_SEL_DO, 2), "互鎖") == 0);
+    CHECK(strcmp(fa_sel_label(FA_SEL_JOG, 0), "0.5 秒") == 0);
+    CHECK(strcmp(fa_sel_label(FA_SEL_DI, 3), "") == 0);                       /* 超出範圍 */
+    for (int i = 0; i < FA_JOG_PRESETS; i++) {                               /* 每個級距都是合法點動時間 */
+        fa_io_cfg_t c; fa_io_default(&c, FA_MODE_FAN3); c.jog_ms[0] = FA_JOG_PRESET_MS[i];
+        CHECK(fa_io_cfg_valid(&c));
+    }
+}
+
+TEST(modes_roundtrip_and_reject)
+{
+    fa_io_cfg_t c; fa_io_default(&c, FA_MODE_FAN3);
+    CHECK(fa_sel_set(&c, 2, FA_SEL_DI, FA_DI_PRESS)); CHECK_EQ(c.di_mode[2], FA_DI_PRESS);
+    CHECK_EQ(fa_sel_get(&c, 2, FA_SEL_DI), FA_DI_PRESS);
+    CHECK(fa_sel_set(&c, 3, FA_SEL_DO, FA_DO_INTERLOCK)); CHECK_EQ(fa_io_interlock_mask(&c), 0xF);
+    CHECK(fa_sel_set(&c, 1, FA_SEL_JOG, 7)); CHECK_EQ(c.jog_ms[1], 300000); CHECK_EQ(fa_sel_get(&c, 1, FA_SEL_JOG), 7);
+    fa_io_cfg_t before = c;
+    CHECK(!fa_sel_set(&c, 4, FA_SEL_DI, 0));                                   /* 通道錯 */
+    CHECK(!fa_sel_set(&c, 0, FA_SEL_DO, 3));                                   /* 選項超出 */
+    CHECK(!fa_sel_set(&c, 0, FA_SEL_JOG, 11));
+    CHECK(memcmp(&before, &c, sizeof c) == 0);                                 /* 被拒絕時設定不變 */
+}
+
+TEST(modes_jog_off_preset_shows_nearest)
+{
+    fa_io_cfg_t c; fa_io_default(&c, FA_MODE_4CH);
+    c.jog_ms[0] = 4000;   CHECK_EQ(fa_sel_get(&c, 0, FA_SEL_JOG), 3);         /* NFC 設 4 秒 → 顯示 5 秒 */
+    c.jog_ms[0] = 1400;   CHECK_EQ(fa_sel_get(&c, 0, FA_SEL_JOG), 1);         /* 1.4 秒 → 1 秒 */
+    c.jog_ms[0] = 3600000; CHECK_EQ(fa_sel_get(&c, 0, FA_SEL_JOG), 10);
+}
+
 int main(void)
 {
     RUN(mode_from_dip);
@@ -541,6 +577,9 @@ int main(void)
     RUN(nfc_state_roundtrip_and_crc);
     RUN(nfc_request_accept_and_reject);
     RUN(nfc_mailbox_auth_and_replay);
+    RUN(modes_counts_labels_and_bounds);
+    RUN(modes_roundtrip_and_reject);
+    RUN(modes_jog_off_preset_shows_nearest);
     printf("%d tests, %d failures\n", ul_run, ul_fail);
     return ul_fail ? 1 : 0;
 }
