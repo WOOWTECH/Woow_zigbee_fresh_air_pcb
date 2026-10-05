@@ -55,4 +55,34 @@ menu "WO30109 新風控制器"
         default 50
         help
             PWM 保持時要大於 FA_RELAY_PULLIN_MS，確保同一時間最多 1 顆在全壓吸合（電源預算的前提）。
+    choice FA_PRESET
+        prompt "出廠預設 DO 模式（V3.2 拿掉指撥，改軟體設定）"
+        default FA_PRESET_FAN3
+        help
+            設成「互鎖」的幾路自動成一組（風速）。之後可在 Home Assistant／維護網頁改（V4 Matter），存在 NVS。
+        config FA_PRESET_FAN3
+            bool "三段風速＋1 路：K1–K3 互鎖、K4 自鎖"
+        config FA_PRESET_FAN2
+            bool "兩段風速＋2 路：K1–K2 互鎖、K3/K4 自鎖"
+        config FA_PRESET_4CH
+            bool "4 路獨立：全部自鎖"
+        config FA_PRESET_SEL4
+            bool "4 路互斥：全部互鎖"
+    endchoice
+
+    choice FA_DI_DEFAULT
+        prompt "出廠預設 DI 模式（4 路相同；遙控器 4 鍵同步）"
+        default FA_DI_DEFAULT_HOLD
+        config FA_DI_DEFAULT_HOLD
+            bool "持續：接通期間作動，斷開停止"
+        config FA_DI_DEFAULT_PRESS
+            bool "按一次：接通那一刻觸發一次"
+        config FA_DI_DEFAULT_OFF
+            bool "全關：不控制繼電器"
+    endchoice
+
+    config FA_JOG_MS
+        int "出廠預設點動時間 (ms)"
+        range 500 3600000
+        default 1000
 endmenu

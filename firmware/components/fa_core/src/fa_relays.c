@@ -17,7 +17,12 @@ uint8_t fa_mode_group_mask(fa_mode_t mode)
 
 void fa_relays_init(fa_relays_t *r, fa_mode_t mode, uint8_t max_on, uint16_t dead_ms)
 {
-    *r = (fa_relays_t){.mode = mode, .max_on = max_on, .dead_ms = dead_ms};
+    *r = (fa_relays_t){.mode = mode, .max_on = max_on, .dead_ms = dead_ms, .group = fa_mode_group_mask(mode)};
+}
+
+void fa_relays_init_group(fa_relays_t *r, uint8_t group_mask, uint8_t max_on, uint16_t dead_ms)
+{
+    *r = (fa_relays_t){.mode = FA_MODE_4CH, .max_on = max_on, .dead_ms = dead_ms, .group = group_mask & 0xF};
 }
 
 static int push(fa_action_t *out, int n, int max_out, uint8_t ch, bool on, uint32_t delay)
@@ -34,7 +39,7 @@ int fa_relays_set(fa_relays_t *r, uint8_t ch, bool on, fa_action_t *out, int max
         r->on[ch] = false;
         return push(out, 0, max_out, ch, false, 0);
     }
-    uint8_t group = fa_mode_group_mask(r->mode);
+    uint8_t group = r->group;
     bool    in_group = group & (1u << ch);
     int     count = 0, freed = 0;
     for (int i = 0; i < FA_CH; i++) {
@@ -64,7 +69,7 @@ int fa_relays_toggle(fa_relays_t *r, uint8_t ch, fa_action_t *out, int max_out)
 
 int fa_relays_cycle(fa_relays_t *r, fa_action_t *out, int max_out)
 {
-    uint8_t group = fa_mode_group_mask(r->mode);
+    uint8_t group = r->group;
     if (!group) return fa_relays_toggle(r, 0, out, max_out);
     int members[FA_CH], m = 0, cur = -1;
     for (int i = 0; i < FA_CH; i++) {

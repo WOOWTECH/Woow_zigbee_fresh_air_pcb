@@ -5,6 +5,7 @@
 #include "fa_button.h"
 #include "fa_remotes.h"
 #include "fa_coil.h"
+#include "fa_io.h"
 
 int ul_fail, ul_run;
 
@@ -249,6 +250,144 @@ TEST(coil_budget_four_relays_fits_irm02)
     CHECK(fa_coil_budget_ua(&no_pwm, 3, 1, base, burst) > rated * 110 / 100);
 }
 
+/* ---------------- DI／DO 模式（V3.2）---------------- */
+static fa_io_t IO; static fa_relays_t RL; static fa_action_t ACT[8]; static uint32_t NOW;
+
+static void io_setup(uint8_t di, uint8_t dout_k1, uint32_t jog)
+{
+    fa_io_cfg_t c; fa_io_default(&c, FA_MODE_FAN3);          /* K1–K3 互鎖、K4 自鎖 */
+    for (int k = 0; k < FA_CH; k++) c.di_mode[k] = di;
+    c.do_mode[0] = dout_k1; c.jog_ms[0] = jog;
+    fa_io_init(&IO, &c);
+    fa_relays_init_group(&RL, fa_io_interlock_mask(&c), 4, 200);
+    NOW = 0;
+}
+/* 接線 DI 維持某電位 n 個 10ms 取樣，回傳最後一次的動作數總和 */
+static int hold_di(uint8_t ch, bool closed, int samples)
+{
+    int total = 0;
+    for (int i = 0; i < samples; i++) {
+        NOW += 10;
+        int n = fa_io_wired(&IO, &RL, ch, closed, NOW, ACT, 8);
+        if (n > 0) total += n;
+        n = fa_io_tick(&IO, &RL, NOW, ACT, 8);
+        if (n > 0) total += n;
+    }
+    return total;
+}
+
+TEST(io_default_preset_and_validation)
+{
+    fa_io_cfg_t c; fa_io_default(&c, FA_MODE_FAN3);
+    CHECK_EQ(fa_io_interlock_mask(&c), 0x7);
+    CHECK_EQ(c.do_mode[3], FA_DO_LATCH);
+    CHECK_EQ(c.di_mode[0], FA_DI_HOLD);
+    CHECK(fa_io_cfg_valid(&c));
+    c.jog_ms[2] = 100;  CHECK(!fa_io_cfg_valid(&c));        /* 點動 <0.5s 不收 */
+    fa_io_default(&c, FA_MODE_4CH); c.di_mode[1] = 7; CHECK(!fa_io_cfg_valid(&c));
+    fa_io_default(&c, FA_MODE_4CH); CHECK_EQ(fa_io_interlock_mask(&c), 0);
+}
+
+TEST(io_debounce_ignores_short_glitch)
+{
+    io_setup(FA_DI_HOLD, FA_DO_LATCH, 1000);
+    hold_di(0, true, 2); hold_di(0, false, 5);                /* 20ms 雜訊：不動作 */
+    CHECK(!RL.on[0]);
+    hold_di(0, true, 3);                                      /* 30ms 穩定：作動 */
+    CHECK(RL.on[0]);
+}
+
+TEST(io_hold_follows_contact_for_all_do_modes)
+{
+    for (uint8_t dm = FA_DO_LATCH; dm <= FA_DO_INTERLOCK; dm++) {
+        io_setup(FA_DI_HOLD, dm, 1000);
+        hold_di(0, true, 5);  CHECK(RL.on[0]);
+        hold_di(0, true, 300); CHECK(RL.on[0]);               /* 點動也不會在持續模式下自己關 */
+        hold_di(0, false, 5); CHECK(!RL.on[0]);
+    }
+}
+
+TEST(io_hold_interlock_switches_speed_break_before_make)
+{
+    io_setup(FA_DI_HOLD, FA_DO_INTERLOCK, 1000);
+    hold_di(0, true, 5); CHECK(RL.on[0]);
+    NOW += 10;
+    fa_io_wired(&IO, &RL, 1, true, NOW, ACT, 8); fa_io_wired(&IO, &RL, 1, true, NOW, ACT, 8);
+    int n = fa_io_wired(&IO, &RL, 1, true, NOW, ACT, 8);      /* DI2 接通：K1 先斷、200ms 後 K2 吸合 */
+    CHECK_EQ(n, 2);
+    CHECK(ACT[0].ch == 0 && !ACT[0].on);
+    CHECK(ACT[1].ch == 1 && ACT[1].on && ACT[1].delay_ms == 200);
+    CHECK(!RL.on[0] && RL.on[1]);
+}
+
+TEST(io_press_latch_toggles_once_per_press)
+{
+    io_setup(FA_DI_PRESS, FA_DO_LATCH, 1000);
+    hold_di(0, true, 50);  CHECK(RL.on[0]);                   /* 按住 0.5 秒：只反轉一次 */
+    hold_di(0, false, 5);  CHECK(RL.on[0]);                   /* 放開：不動 */
+    hold_di(0, true, 5);   CHECK(!RL.on[0]);                  /* 再按：關 */
+}
+
+TEST(io_press_jog_pulses_and_retrigger_restarts)
+{
+    io_setup(FA_DI_PRESS, FA_DO_JOG, 1000);
+    hold_di(0, true, 5); hold_di(0, false, 5); CHECK(RL.on[0]);
+    hold_di(0, false, 80); CHECK(RL.on[0]);                   /* 0.9 秒：還開著 */
+    hold_di(0, true, 5);  hold_di(0, false, 5);               /* 期間再按：重新計時 */
+    hold_di(0, false, 80); CHECK(RL.on[0]);
+    hold_di(0, false, 20); CHECK(!RL.on[0]);                  /* 重新計時後滿 1 秒：關 */
+}
+
+TEST(io_press_interlock_on_then_off)
+{
+    io_setup(FA_DI_PRESS, FA_DO_INTERLOCK, 1000);
+    hold_di(1, true, 5); hold_di(1, false, 5); CHECK(RL.on[1]);   /* DI2：K2 開 */
+    hold_di(2, true, 5); hold_di(2, false, 30); CHECK(!RL.on[1] && RL.on[2]);  /* DI3：換 K3 */
+    hold_di(2, true, 5); hold_di(2, false, 5); CHECK(!RL.on[2]);  /* 再按 DI3：關 */
+}
+
+TEST(io_off_mode_does_nothing)
+{
+    io_setup(FA_DI_OFF, FA_DO_LATCH, 1000);
+    hold_di(3, true, 10); hold_di(3, false, 10); hold_di(3, true, 10);
+    CHECK(!RL.on[3]);
+    CHECK(IO.active[3]);                                      /* 狀態仍回報 */
+}
+
+TEST(io_rf_is_a_twin_of_wired_di)
+{
+    io_setup(FA_DI_PRESS, FA_DO_LATCH, 1000);
+    for (int i = 0; i < 10; i++) {                            /* 按住遙控器 0.5 秒（每 50ms 一幀）：只反轉一次 */
+        NOW += 50; fa_io_rf(&IO, &RL, 3, NOW, ACT, 8); fa_io_tick(&IO, &RL, NOW, ACT, 8);
+    }
+    CHECK(RL.on[3]);
+    NOW += 150; fa_io_tick(&IO, &RL, NOW, ACT, 8); CHECK(IO.rf[3]);    /* 150ms 沒收到：還算按住 */
+    NOW += 100; fa_io_tick(&IO, &RL, NOW, ACT, 8); CHECK(!IO.rf[3]);   /* 250ms：放開 */
+    NOW += 50; fa_io_rf(&IO, &RL, 3, NOW, ACT, 8); CHECK(!RL.on[3]);   /* 再按：關 */
+    /* 接線接通時再按遙控器：合併狀態已經是接通，不會再觸發 */
+    io_setup(FA_DI_PRESS, FA_DO_LATCH, 1000);
+    hold_di(3, true, 5); CHECK(RL.on[3]);
+    NOW += 10; fa_io_rf(&IO, &RL, 3, NOW, ACT, 8); CHECK(RL.on[3]);
+}
+
+TEST(io_rf_hold_mode_releases_after_timeout)
+{
+    io_setup(FA_DI_HOLD, FA_DO_LATCH, 1000);
+    NOW += 50; fa_io_rf(&IO, &RL, 3, NOW, ACT, 8); CHECK(RL.on[3]);
+    NOW += 250; fa_io_tick(&IO, &RL, NOW, ACT, 8); CHECK(!RL.on[3]);
+}
+
+TEST(io_respects_max_on_limit)
+{
+    io_setup(FA_DI_HOLD, FA_DO_LATCH, 1000);
+    fa_io_cfg_t c = IO.cfg; for (int k = 0; k < FA_CH; k++) c.do_mode[k] = FA_DO_LATCH;
+    fa_io_init(&IO, &c); fa_relays_init_group(&RL, 0, 3, 200);
+    hold_di(0, true, 5); hold_di(1, true, 5); hold_di(2, true, 5);
+    NOW += 10; fa_io_wired(&IO, &RL, 3, true, NOW, ACT, 8); fa_io_wired(&IO, &RL, 3, true, NOW, ACT, 8);
+    CHECK_EQ(fa_io_wired(&IO, &RL, 3, true, NOW, ACT, 8), FA_ERR_LIMIT);
+    CHECK(!RL.on[3]);
+}
+
 int main(void)
 {
     RUN(mode_from_dip);
@@ -271,6 +410,17 @@ int main(void)
     RUN(coil_full_voltage_for_pullin_then_hold);
     RUN(coil_hold_voltage_above_omron_30_percent);
     RUN(coil_budget_four_relays_fits_irm02);
+    RUN(io_default_preset_and_validation);
+    RUN(io_debounce_ignores_short_glitch);
+    RUN(io_hold_follows_contact_for_all_do_modes);
+    RUN(io_hold_interlock_switches_speed_break_before_make);
+    RUN(io_press_latch_toggles_once_per_press);
+    RUN(io_press_jog_pulses_and_retrigger_restarts);
+    RUN(io_press_interlock_on_then_off);
+    RUN(io_off_mode_does_nothing);
+    RUN(io_rf_is_a_twin_of_wired_di);
+    RUN(io_rf_hold_mode_releases_after_timeout);
+    RUN(io_respects_max_on_limit);
     printf("%d tests, %d failures\n", ul_run, ul_fail);
     return ul_fail ? 1 : 0;
 }
