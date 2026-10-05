@@ -54,6 +54,13 @@ jobs:
           # 守門：有續流二極體時 Vds 峰值必須 < Si2302 耐壓 20V
           python3 -c "import re,sys; v=float(re.search(r'vds_peak\s*=\s*([0-9.e+-]+)',open('../out/spice_relay.txt').read()).group(1)); print('Vds peak',v); sys.exit(0 if v<20 else 1)"
 
+      - name: JLC 下單檔（CPL 角度用 JLC 實際封裝驗證）
+        if: always()
+        run: |
+          python3 scripts/test_make_jlc_files.py
+          python3 scripts/make_jlc_files.py --check | tee out/jlc_cpl.txt
+          cp -r $PRJ/output/jlc out/jlc
+
       - uses: actions/upload-artifact@v5
         if: always()
         with:

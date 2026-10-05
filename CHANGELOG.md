@@ -26,6 +26,18 @@ IRM-02-12 額定 12V 167mA。ESP32-C6 Zigbee 發射 +12dBm 峰值 185mA@3.3V，�
 - 修正計算：路由器常態是**收訊** 73mA（12V 側 23mA），4 顆全吸持續 159mA 在額定內；超額的是發射峰值。韌體預設同時吸合 ≤3 顆、發射 +10dBm（峰值 158mA）、不啟動 Wi-Fi。
 - 硬體根治：下一版改 IRM-03-12（250mA，C6640065），但封裝腳位完全不同，市電要重新佈線。
 
+## [3.0.3] — CPL 角度改用 JLC 實際封裝驗證
+
+### 修正（會直接做出壞板）
+- 在 JLC 下單頁 3D 檢視器逐顆核對 V3.0 的 CPL，背面 **Q1–Q4、U4、S1 都差 90°**（腳伸出方向和焊盤垂直）。原因：matthewlai 規則表依「封裝名稱」比對，但 JLC 擺件用的是**該 LCSC 料號自己的 EasyEDA 封裝**；C5224182 的 `SOT-23-3…BR` 要 180°（表上 −90°）、C780769 的 `TSOT-26` 要 270°（表上 180°）、C7421516 的 DIP 開關要 270°（表上沒有規則）。
+- 正確角度：Q1–Q4 0°、U4 90°、S1 90°（原本 90°、0°、180°）。其他零件和 3D 檢視器一致。
+
+### 改進
+- `hardware/WO30109_FreshAir/jlc_footprints.json`：BOM 26 種料號在 EasyEDA 庫的焊盤座標快取（CI 不連 EasyEDA，它連續抓約 20 筆就回 403）。
+- `make_jlc_files.py`：角度優先用快取的 JLC 封裝依焊盤編號比對 0/90/180/270 求解（正面 板上=R(θ)·E；背面 板上=MirrorX·R(θ)·E，已在 JLC 檢視器實測），唯一解才採用；對稱件、焊盤編號對不上、沒有快取才退回規則表，並列出「角度沒有經過驗證」的零件（目前 B1、RV1、U2，都是對稱或腳位不對稱的通孔件，插反裝不進去）。模組散熱焊盤被 EasyEDA 拆成多個編號時，容許剔除 10% 焊盤。
+- 新增 `--refresh-footprints`（換料後更新快取，需 `pip install easyeda2kicad`）與 `--check`（有料號沒快取就失敗）。
+- `scripts/test_make_jlc_files.py`：6 個單元測試（真實的 U3、Y1、D1、Q1、U4、S1 焊盤＋鏡像、對稱、散熱焊盤離群等情況）。KiCad CI 新增「JLC 下單檔」步驟，跑測試＋`make_jlc_files.py --check`，產物附在 artifact 的 `jlc/`。
+
 ## [3.0.2] — JLC 下單檔
 
 - `scripts/make_jlc_files.py`：一次產出 JLC 的 Gerber＋鑽孔 zip、BOM、CPL（`output/jlc/`）。CPL 位置取焊盤中心、背面角度鏡射，旋轉修正用 matthewlai `cpl_rotations_db.csv`（與 kicad-jlcpcb-tools 相同比對規則）；沒有規則的自訂封裝（U1、K1–K4、B1）會列出來，下單時要在 JLC 預覽確認。
