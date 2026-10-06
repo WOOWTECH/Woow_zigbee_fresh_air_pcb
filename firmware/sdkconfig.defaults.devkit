@@ -1,0 +1,3 @@
+# 開發板上測 Thread 正式版（ESP32-C6-DevKitC-1 這類有板載 WS2812 的板子）：
+# idf.py -B build_thread_devkit -D SDKCONFIG=sdkconfig.thread_devkit -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.devkit" build
+CONFIG_FA_DEVKIT_RGB=y

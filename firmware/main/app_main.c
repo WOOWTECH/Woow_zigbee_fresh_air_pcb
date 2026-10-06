@@ -29,6 +29,9 @@
 #include "fa_relays.h"
 #include "fa_remotes.h"
 #include "fa_net.h"
+#if CONFIG_FA_DEVKIT_RGB
+#include "ws2812.h"
+#endif
 
 static const char *TAG = "fa";
 
@@ -490,7 +493,18 @@ static void ui_task(void *arg)
             xSemaphoreGive(s_lock);
             if (mask != last_di) { last_di = mask; fa_net_report_di(mask); }
         }
-        gpio_set_level(PIN_LED, led_pattern(t, fa_button_held_ms(&btn, t)));
+        bool lit = led_pattern(t, fa_button_held_ms(&btn, t));
+        gpio_set_level(PIN_LED, lit);
+#if CONFIG_FA_DEVKIT_RGB
+        {
+            bool on[FA_CH];
+            xSemaphoreTake(s_lock, portMAX_DELAY);
+            memcpy(on, s_relays.on, sizeof on);
+            xSemaphoreGive(s_lock);
+            fa_rgb_t c = fa_led_rgb(lit, on);
+            ws2812_set(c.r, c.g, c.b);
+        }
+#endif
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
@@ -520,6 +534,10 @@ void app_main(void)
     ESP_ERROR_CHECK(err);
 
     gpio_setup();                              /* 繼電器腳先拉低，LEDC 接手前不會吸合 */
+#if CONFIG_FA_DEVKIT_RGB
+    if (ws2812_init(8) != ESP_OK) ESP_LOGE(TAG, "板載 RGB 燈（GPIO8）初始化失敗");
+    else ESP_LOGI(TAG, "開發板模式：板載 RGB 燈（GPIO8）顯示狀態與 K1–K4");
+#endif
     coil_init();
     s_lock = xSemaphoreCreateMutex();
     s_relay_q = xQueueCreate(32, sizeof(fa_action_t));

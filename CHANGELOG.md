@@ -49,6 +49,7 @@ IRM-02-12 額定 12V 167mA。ESP32-C6 Zigbee 發射 +12dBm 峰值 185mA@3.3V，�
 - 狀態燈抽成 `fa_core/fa_led`（可主機測試），新增「已配對但斷線＝兩短一長」；Matter Identify 會讓燈快閃。
 - EP1–8 加 Fixed Label `ha_entitylabel`（K1–K4、DI1–DI4），HA 用它命名 entity；Matter 工廠資料改讀 `fctry` 分區。
 - **修正（開發板上機發現）**：esp-matter 預設 endpoint 上限 16，EP16–20（後 5 個下拉選單）建立失敗；上限改 21，並加 `static_assert` 讓設定太小時編譯失敗。
+- 開發板模式 `CONFIG_FA_DEVKIT_RGB`：板載 WS2812（GPIO8）用顏色顯示 K1–K4、亮滅顯示狀態（RMT 自寫驅動，不加相依）；`sdkconfig.defaults.devkit` 給 Thread 開發板用。
 - 上機驗收清單 `docs/verification/V4.0-checklist.md`（開發板 Wi-Fi／Thread／V3.4 板三階段，63 項）；查證筆記 `docs/v4-matter-research.md`。
 
 ## [3.4] — 照外殼 4-02-3 放回原板框

@@ -10,6 +10,14 @@ menu "WO30109 新風控制器"
             bool "V3.2（DI，沒有 NFC）"
     endchoice
 
+    config FA_DEVKIT_RGB
+        bool "開發板模式：板載 RGB 燈（GPIO8 WS2812）顯示狀態與 K1–K4"
+        default n
+        help
+            給 ESP32-C6-DevKitC-1 這類有板載 WS2812 的開發板用（規格 D8）。燈號的亮滅與 GPIO2 狀態燈相同，
+            亮的時候用顏色顯示繼電器：全關暗白、K1 紅、K2 綠、K3 藍、K4 開時加白。
+            正式板子 GPIO8 沒接東西，不要開。
+
     config FA_RELAY_PWM_HOLD
         bool "繼電器 PWM 降壓保持（吸合後改 PWM，省 12V 電流）"
         default y

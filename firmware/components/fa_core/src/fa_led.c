@@ -20,3 +20,15 @@ bool fa_led_level(const fa_led_in_t *in, uint32_t t)
     default:                  return true;
     }
 }
+
+fa_rgb_t fa_led_rgb(bool level, const bool on[4])
+{
+    fa_rgb_t c = {0, 0, 0};
+    if (!level) return c;
+    if (!on[0] && !on[1] && !on[2] && !on[3]) return (fa_rgb_t){6, 6, 6};
+    if (on[0]) c.r += 40;
+    if (on[1]) c.g += 40;
+    if (on[2]) c.b += 40;
+    if (on[3]) { c.r += 15; c.g += 15; c.b += 15; }
+    return c;
+}

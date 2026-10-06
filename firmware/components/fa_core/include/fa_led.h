@@ -22,3 +22,8 @@ typedef struct {
 #define FA_LED_BEACON_PERIOD_MS 2000   /* 兩短一長的週期 */
 
 bool fa_led_level(const fa_led_in_t *in, uint32_t t_ms);
+
+/* 開發板模式（板載 WS2812 RGB 燈）：燈號的亮／滅同上，亮的時候用顏色顯示 K1–K4：
+ *   全關＝暗白；K1 紅、K2 綠、K3 藍；K4 開時再加白（顏色變淡）。亮度壓低，避免刺眼。 */
+typedef struct { uint8_t r, g, b; } fa_rgb_t;
+fa_rgb_t fa_led_rgb(bool level, const bool on[4]);

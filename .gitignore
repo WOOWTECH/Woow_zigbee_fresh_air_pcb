@@ -35,5 +35,8 @@ firmware/sdkconfig.old
 firmware/build_wifi/
 firmware/sdkconfig.wifi_test
 firmware/sdkconfig.wifi_test.old
+firmware/build_thread_devkit/
+firmware/sdkconfig.thread_devkit
+firmware/sdkconfig.thread_devkit.old
 firmware/managed_components/
 firmware/test/test_core

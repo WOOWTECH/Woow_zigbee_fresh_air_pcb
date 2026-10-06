@@ -599,6 +599,21 @@ TEST(led_priority_button_learn_identify_over_net)
     CHECK_EQ(led_on_ms(&in, 0, 1000), 1000);                      /* 放開就重置：恆亮 */
 }
 
+TEST(led_rgb_shows_relays_when_lit)
+{
+    bool none[4] = {0}, k1[4] = {1, 0, 0, 0}, k2[4] = {0, 1, 0, 0}, k3[4] = {0, 0, 1, 0}, k4[4] = {0, 0, 0, 1}, k1k4[4] = {1, 0, 0, 1};
+    fa_rgb_t c = fa_led_rgb(false, k1);
+    CHECK(c.r == 0 && c.g == 0 && c.b == 0);                      /* 燈號「滅」的時刻：全暗 */
+    c = fa_led_rgb(true, none);
+    CHECK(c.r > 0 && c.r == c.g && c.g == c.b);                   /* 全關：暗白，看得出恆亮／閃 */
+    fa_rgb_t dim = c;
+    c = fa_led_rgb(true, k1); CHECK(c.r > 0 && c.g == 0 && c.b == 0);
+    c = fa_led_rgb(true, k2); CHECK(c.g > 0 && c.r == 0 && c.b == 0);
+    c = fa_led_rgb(true, k3); CHECK(c.b > 0 && c.r == 0 && c.g == 0);
+    c = fa_led_rgb(true, k4); CHECK(c.r == c.g && c.g == c.b && c.r > dim.r);   /* K4 單獨：比全關亮的白 */
+    c = fa_led_rgb(true, k1k4); CHECK(c.r > c.g && c.g == c.b && c.g > 0);      /* K1＋K4：淡紅 */
+}
+
 int main(void)
 {
     RUN(mode_from_dip);
@@ -643,6 +658,7 @@ int main(void)
     RUN(modes_jog_off_preset_shows_nearest);
     RUN(led_net_states);
     RUN(led_priority_button_learn_identify_over_net);
+    RUN(led_rgb_shows_relays_when_lit);
     printf("%d tests, %d failures\n", ul_run, ul_fail);
     return ul_fail ? 1 : 0;
 }
