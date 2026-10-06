@@ -445,16 +445,15 @@ static void factory_reset(void)
     fa_net_factory_reset();
 }
 
-static bool led_pattern(uint32_t t, uint32_t held)
+static fa_led_in_t led_input(uint32_t held)
 {
     int64_t now = esp_timer_get_time();
-    fa_led_in_t in = {
+    return (fa_led_in_t){
         .held_ms = held,
         .learning = s_learn_until_us && now < s_learn_until_us,
         .identifying = s_identify_until_us && now < s_identify_until_us,   /* Matter Identify 或 NFC 找裝置 */
         .net = !fa_net_commissioned() ? FA_LED_NET_UNPAIRED : fa_net_joined() ? FA_LED_NET_ONLINE : FA_LED_NET_OFFLINE,
     };
-    return fa_led_level(&in, t);
 }
 
 static void ui_task(void *arg)
@@ -501,8 +500,8 @@ static void ui_task(void *arg)
             xSemaphoreGive(s_lock);
             if (mask != last_di) { last_di = mask; fa_net_report_di(mask); }
         }
-        bool lit = led_pattern(t, fa_button_held_ms(&btn, t));
-        gpio_set_level(PIN_LED, lit);
+        fa_led_in_t led = led_input(fa_button_held_ms(&btn, t));
+        gpio_set_level(PIN_LED, fa_led_level(&led, t));
 #if CONFIG_FA_DEVKIT_RGB
         {
             bool on[FA_CH];
@@ -512,8 +511,8 @@ static void ui_task(void *arg)
             uint32_t l = s_light_rgb;
             if (l >> 24)                                           /* controller 開了彩色燈：顯示它設的顏色 */
                 ws2812_set((uint8_t)(l >> 16), (uint8_t)(l >> 8), (uint8_t)l);
-            else {                                                 /* 關著：回到狀態燈＋K1–K4 顏色 */
-                fa_rgb_t c = fa_led_rgb(lit, on);
+            else {                                                 /* 關著：K1–K4 顏色或狀態閃燈；正常且全關時全暗 */
+                fa_rgb_t c = fa_led_rgb(fa_led_rgb_status_lit(&led, t, on), on);
                 ws2812_set(c.r, c.g, c.b);
             }
         }

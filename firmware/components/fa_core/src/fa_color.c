@@ -51,3 +51,27 @@ fa_rgb_t fa_color_from_mireds(uint16_t mireds, uint8_t level, uint8_t max)
     }
     return scale(clamp01(r / 255), clamp01(g / 255), clamp01(b / 255), level, max);
 }
+
+uint16_t fa_color_hue8_to16(uint8_t hue8)
+{
+    uint32_t h = (uint32_t)(hue8 > 254 ? 254 : hue8) * 65536u / 254u;   /* 254＝360° */
+    return h > 65535 ? 65535 : (uint16_t)h;
+}
+
+fa_rgb_t fa_color_from_hs(uint16_t hue16, uint8_t sat, uint8_t level, uint8_t max)
+{
+    float h = hue16 * 6.0f / 65536.0f;                     /* 0–6：紅黃綠青藍洋紅 */
+    float s = (sat > 254 ? 254 : sat) / 254.0f;
+    int i = (int)h;
+    float f = h - i, p = 1 - s, q = 1 - s * f, t = 1 - s * (1 - f);
+    float r, g, b;
+    switch (i % 6) {
+    case 0: r = 1; g = t; b = p; break;
+    case 1: r = q; g = 1; b = p; break;
+    case 2: r = p; g = 1; b = t; break;
+    case 3: r = p; g = q; b = 1; break;
+    case 4: r = t; g = p; b = 1; break;
+    default: r = 1; g = p; b = q; break;
+    }
+    return scale(r, g, b, level, max);
+}

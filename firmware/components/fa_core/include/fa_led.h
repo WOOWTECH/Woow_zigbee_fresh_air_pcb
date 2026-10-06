@@ -27,6 +27,9 @@ bool fa_led_level(const fa_led_in_t *in, uint32_t t_ms);
  *   全關＝暗白；K1 紅、K2 綠、K3 藍；K4 開時再加白（顏色變淡）。亮度壓低，避免刺眼。 */
 typedef struct { uint8_t r, g, b; } fa_rgb_t;
 fa_rgb_t fa_led_rgb(bool level, const bool on[4]);
+/* 狀態顯示這一刻要不要點亮 RGB：有繼電器開著、或狀態不是「正常已連線」（閃燈）時才亮；
+ * 正常且全關時不亮（開發板彩色燈關掉時要全暗） */
+bool fa_led_rgb_status_lit(const fa_led_in_t *in, uint32_t t_ms, const bool on[4]);
 
 /* WS2812 類燈珠送出的位元組順序：標準 WS2812 是 GRB；有些開發板的燈珠是 RGB（紅綠會對調）。 */
 typedef enum { FA_LED_ORDER_GRB = 0, FA_LED_ORDER_RGB = 1 } fa_led_order_t;

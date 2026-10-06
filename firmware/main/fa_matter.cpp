@@ -187,11 +187,19 @@ static void refresh_light()
     esp_matter_attr_val_t lv = light_attr(LevelControl::Id, LevelControl::Attributes::CurrentLevel::Id);
     uint8_t level = (lv.type == ESP_MATTER_VAL_TYPE_INVALID || lv.val.u8 == 0xFF) ? 254 : lv.val.u8;   /* null＝最亮 */
     uint8_t mode = light_attr(ColorControl::Id, ColorControl::Attributes::ColorMode::Id).val.u8;
+    uint8_t emode = light_attr(ColorControl::Id, ColorControl::Attributes::EnhancedColorMode::Id).val.u8;
     fa_rgb_t c;
     if (mode == chip::to_underlying(ColorControl::ColorModeEnum::kColorTemperatureMireds))
         c = fa_color_from_mireds(light_attr(ColorControl::Id, ColorControl::Attributes::ColorTemperatureMireds::Id).val.u16,
                                  level, kLightMax);
-    else
+    else if (mode == chip::to_underlying(ColorControl::ColorModeEnum::kCurrentHueAndCurrentSaturation)) {
+        /* 色盤（塗鴉等）：8-bit 色相，或 Enhanced 16-bit 色相 */
+        uint16_t hue16 = emode == chip::to_underlying(ColorControl::EnhancedColorModeEnum::kEnhancedCurrentHueAndCurrentSaturation)
+            ? light_attr(ColorControl::Id, ColorControl::Attributes::EnhancedCurrentHue::Id).val.u16
+            : fa_color_hue8_to16(light_attr(ColorControl::Id, ColorControl::Attributes::CurrentHue::Id).val.u8);
+        c = fa_color_from_hs(hue16, light_attr(ColorControl::Id, ColorControl::Attributes::CurrentSaturation::Id).val.u8,
+                             level, kLightMax);
+    } else
         c = fa_color_from_xy(light_attr(ColorControl::Id, ColorControl::Attributes::CurrentX::Id).val.u16,
                              light_attr(ColorControl::Id, ColorControl::Attributes::CurrentY::Id).val.u16, level, kLightMax);
     s_cb.light(on, c.r, c.g, c.b);
@@ -392,7 +400,7 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
         c.on_off.on_off = false;
         c.on_off_lighting.start_up_on_off = nullptr;
         c.level_control.current_level = 254;
-        c.level_control.on_level = 254;
+        /* on_level 保持 null：開燈時回到上次的亮度（設成 254 會每次開燈都全亮） */
         c.level_control_lighting.start_up_current_level = 254;
         c.color_control.color_mode = chip::to_underlying(ColorControl::ColorModeEnum::kCurrentXAndCurrentY);
         c.color_control.enhanced_color_mode = chip::to_underlying(ColorControl::EnhancedColorModeEnum::kCurrentXAndCurrentY);
@@ -403,6 +411,15 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
         c.color_control_color_temperature.color_temperature_mireds = 250;                  /* 4000K */
         endpoint_t *ep = extended_color_light::create(node, &c, ENDPOINT_FLAG_NONE, nullptr);
         if (!ep) ESP_LOGE(TAG, "開發板彩色燈 endpoint 建立失敗");
+        else {
+            /* esp-matter 的 Extended Color Light 只有 xy＋色溫；塗鴉等的色盤送色相／飽和度指令，要另外加 HS（含 Enhanced Hue） */
+            cluster_t *cc = cluster::get(ep, ColorControl::Id);
+            cluster::color_control::feature::hue_saturation::config_t hs;
+            cluster::color_control::feature::enhanced_hue::config_t eh;
+            if (cluster::color_control::feature::hue_saturation::add(cc, &hs) != ESP_OK ||
+                cluster::color_control::feature::enhanced_hue::add(cc, &eh) != ESP_OK)
+                ESP_LOGE(TAG, "彩色燈加色相／飽和度功能失敗");
+        }
         s_ep_light = ep ? endpoint::get_id(ep) : 0;
         ESP_LOGI(TAG, "開發板彩色燈：endpoint %u", s_ep_light);
     }

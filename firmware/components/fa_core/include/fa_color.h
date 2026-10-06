@@ -8,3 +8,7 @@
 
 fa_rgb_t fa_color_from_xy(uint16_t x, uint16_t y, uint8_t level, uint8_t max);
 fa_rgb_t fa_color_from_mireds(uint16_t mireds, uint8_t level, uint8_t max);
+/* 色相／飽和度（塗鴉等 controller 的色盤用這個）：hue16＝一圈 65536（EnhancedCurrentHue 原值；
+ * 8-bit CurrentHue 0–254 用 fa_color_hue8_to16 換算），sat 0–254 */
+uint16_t fa_color_hue8_to16(uint8_t hue8);
+fa_rgb_t fa_color_from_hs(uint16_t hue16, uint8_t sat, uint8_t level, uint8_t max);

@@ -39,3 +39,10 @@ void fa_led_wire_bytes(fa_rgb_t c, fa_led_order_t order, uint8_t out[3])
     out[1] = order == FA_LED_ORDER_RGB ? c.g : c.r;
     out[2] = c.b;
 }
+
+bool fa_led_rgb_status_lit(const fa_led_in_t *in, uint32_t t, const bool on[4])
+{
+    bool any = on[0] || on[1] || on[2] || on[3];
+    bool special = in->held_ms >= FA_BTN_LONG_MIN || in->learning || in->identifying || in->net != FA_LED_NET_ONLINE;
+    return (any || special) && fa_led_level(in, t);
+}

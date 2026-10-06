@@ -606,7 +606,7 @@ TEST(led_rgb_shows_relays_when_lit)
     fa_rgb_t c = fa_led_rgb(false, k1);
     CHECK(c.r == 0 && c.g == 0 && c.b == 0);                      /* 燈號「滅」的時刻：全暗 */
     c = fa_led_rgb(true, none);
-    CHECK(c.r > 0 && c.r == c.g && c.g == c.b);                   /* 全關：暗白，看得出恆亮／閃 */
+    CHECK(c.r > 0 && c.r == c.g && c.g == c.b);                   /* 全關的顏色：暗白（亮不亮由 fa_led_rgb_status_lit 決定） */
     fa_rgb_t dim = c;
     c = fa_led_rgb(true, k1); CHECK(c.r > 0 && c.g == 0 && c.b == 0);
     c = fa_led_rgb(true, k2); CHECK(c.g > 0 && c.r == 0 && c.b == 0);
@@ -662,6 +662,37 @@ TEST(led_wire_byte_order)
     CHECK(b[0] == 200 && b[1] == 10 && b[2] == 3);                /* RGB 燈珠：R、G、B */
 }
 
+TEST(led_rgb_status_blink_still_visible_when_relays_off)
+{
+    bool none[4] = {0};
+    fa_led_in_t in = {.net = FA_LED_NET_UNPAIRED};
+    fa_rgb_t c = fa_led_rgb(fa_led_level(&in, 600), none);       /* 未配對慢閃的「亮」 */
+    CHECK(c.r > 0 && c.r == c.g && c.g == c.b);
+    CHECK(fa_led_rgb_status_lit(&in, 600, none));
+    in.net = FA_LED_NET_ONLINE;
+    CHECK(!fa_led_rgb_status_lit(&in, 600, none));               /* 正常、全關：不亮 */
+}
+
+TEST(color_hs_primaries_and_white)
+{
+    fa_rgb_t c = fa_color_from_hs(0, 254, 254, 255);
+    CHECK(c.r == 255 && c.g == 0 && c.b == 0);                     /* 紅 */
+    c = fa_color_from_hs(fa_color_hue8_to16(85), 254, 254, 255);  /* 8-bit 85 ≈ 120° 綠 */
+    CHECK(c.g == 255 && c.r == 0 && c.b <= 3);                   /* 120.5°：帶一點點藍 */
+    c = fa_color_from_hs(43690, 254, 254, 255);                   /* 240° 藍 */
+    CHECK(c.b == 255 && c.r <= 1 && c.g <= 1);
+    c = fa_color_from_hs(10922, 254, 254, 255);                   /* 60° 黃 */
+    CHECK(c.r == 255 && c.g >= 250 && c.b == 0);
+    c = fa_color_from_hs(12345, 0, 254, 255);                     /* 飽和度 0：白 */
+    CHECK(c.r == 255 && c.g == 255 && c.b == 255);
+    c = fa_color_from_hs(0, 127, 254, 255);                       /* 飽和度一半：淡紅 */
+    CHECK(c.r == 255 && c.g >= 120 && c.g <= 135 && c.g == c.b);
+    CHECK_EQ(fa_color_hue8_to16(0), 0);
+    CHECK(fa_color_hue8_to16(254) >= 65270);                      /* 最大值接近一整圈，不溢位 */
+    c = fa_color_from_hs(0, 254, 127, 100);
+    CHECK(c.r >= 48 && c.r <= 52 && c.g == 0);                    /* 亮度一半、上限 100 */
+}
+
 int main(void)
 {
     RUN(mode_from_dip);
@@ -711,6 +742,8 @@ int main(void)
     RUN(color_level_scales_and_caps);
     RUN(color_mireds_warm_vs_cool);
     RUN(led_wire_byte_order);
+    RUN(led_rgb_status_blink_still_visible_when_relays_off);
+    RUN(color_hs_primaries_and_white);
     printf("%d tests, %d failures\n", ul_run, ul_fail);
     return ul_fail ? 1 : 0;
 }
