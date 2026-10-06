@@ -16,6 +16,8 @@ menu "WO30109 新風控制器"
         help
             給 ESP32-C6-DevKitC-1 這類有板載 WS2812 的開發板用（規格 D8）。燈號的亮滅與 GPIO2 狀態燈相同，
             亮的時候用顏色顯示繼電器：全關暗白、K1 紅、K2 綠、K3 藍、K4 開時加白。
+            另外多一個 Matter Extended Color Light（EP21），controller（HA 等）把燈打開時改顯示它設的顏色與亮度，
+            關掉就回到上面的狀態顯示。endpoint 上限要 ≥22（sdkconfig.defaults.devkit）。
             正式板子 GPIO8 沒接東西，不要開。
 
     config FA_RELAY_PWM_HOLD

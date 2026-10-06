@@ -10,6 +10,7 @@
 #include "fa_nfc.h"
 #include "fa_modes.h"
 #include "fa_led.h"
+#include "fa_color.h"
 #include <string.h>
 
 int ul_fail, ul_run;
@@ -614,6 +615,43 @@ TEST(led_rgb_shows_relays_when_lit)
     c = fa_led_rgb(true, k1k4); CHECK(c.r > c.g && c.g == c.b && c.g > 0);      /* K1＋K4：淡紅 */
 }
 
+/* ---------------- 顏色轉換（開發板彩色燈） ---------------- */
+#define XY(v) ((uint16_t)((v) * 65536.0 + 0.5))
+
+TEST(color_xy_primaries_and_white)
+{
+    fa_rgb_t c = fa_color_from_xy(XY(0.700), XY(0.299), 254, 255);   /* 紅 */
+    CHECK(c.r == 255 && c.g < 40 && c.b < 40);
+    c = fa_color_from_xy(XY(0.172), XY(0.747), 254, 255);            /* 綠 */
+    CHECK(c.g == 255 && c.r < 80 && c.b < 80);
+    c = fa_color_from_xy(XY(0.135), XY(0.039), 254, 255);            /* 藍 */
+    CHECK(c.b == 255 && c.r < 80 && c.g < 40);
+    c = fa_color_from_xy(XY(0.3127), XY(0.3290), 254, 255);          /* D65 白 */
+    CHECK(c.r >= 240 && c.g >= 240 && c.b >= 240);
+}
+
+TEST(color_level_scales_and_caps)
+{
+    fa_rgb_t full = fa_color_from_xy(XY(0.700), XY(0.299), 254, 100);
+    CHECK_EQ(full.r, 100);                                           /* 壓在 max */
+    fa_rgb_t half = fa_color_from_xy(XY(0.700), XY(0.299), 127, 100);
+    CHECK(half.r >= 48 && half.r <= 52);                             /* 亮度一半 */
+    fa_rgb_t low = fa_color_from_xy(XY(0.700), XY(0.299), 1, 100);
+    CHECK(low.r >= 1);                                               /* 最暗仍看得到 */
+    fa_rgb_t bad = fa_color_from_xy(0, 0, 254, 100);                 /* y＝0 不能除以零 */
+    CHECK(bad.r == bad.g && bad.g == bad.b);
+}
+
+TEST(color_mireds_warm_vs_cool)
+{
+    fa_rgb_t warm = fa_color_from_mireds(370, 254, 255);             /* 2700K */
+    CHECK(warm.r == 255 && warm.b < warm.g && warm.g < warm.r);
+    fa_rgb_t cool = fa_color_from_mireds(153, 254, 255);             /* 6500K */
+    CHECK(cool.r >= 240 && cool.g >= 240 && cool.b >= 230);
+    fa_rgb_t extreme = fa_color_from_mireds(0, 254, 255);            /* 0 不能除以零 */
+    CHECK(extreme.b > 0);
+}
+
 int main(void)
 {
     RUN(mode_from_dip);
@@ -659,6 +697,9 @@ int main(void)
     RUN(led_net_states);
     RUN(led_priority_button_learn_identify_over_net);
     RUN(led_rgb_shows_relays_when_lit);
+    RUN(color_xy_primaries_and_white);
+    RUN(color_level_scales_and_caps);
+    RUN(color_mireds_warm_vs_cool);
     printf("%d tests, %d failures\n", ul_run, ul_fail);
     return ul_fail ? 1 : 0;
 }

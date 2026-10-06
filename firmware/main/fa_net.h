@@ -15,6 +15,8 @@ typedef struct {
     bool (*on_cfg)(const fa_io_cfg_t *cfg);
     /* controller 要裝置「找自己」（Identify）：seconds＞0 開始快閃 seconds 秒，0＝停止 */
     void (*identify)(uint16_t seconds);
+    /* 開發板模式（CONFIG_FA_DEVKIT_RGB）：板載 RGB 燈當 Extended Color Light，controller 改了就回呼（已換算成 RGB＋亮度） */
+    void (*light)(bool on, uint8_t r, uint8_t g, uint8_t b);
 } fa_net_cb_t;
 
 void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg);

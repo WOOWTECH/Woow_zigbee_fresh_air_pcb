@@ -4,6 +4,7 @@
  *   EP1–4   On/Off Plug-in Unit   K1–K4
  *   EP5–8   Contact Sensor        DI1–DI4（Boolean State.StateValue：接通＝true）
  *   EP9–20  Mode Select ×12       每路 DI 模式／DO 模式／點動時間（HA 顯示成下拉選單；選項見 fa_modes）
+ *   EP21    Extended Color Light  只在開發板模式（CONFIG_FA_DEVKIT_RGB）：板載 RGB 燈，讓 controller 能測燈
  *   EP1–8 另帶 Fixed Label {ha_entitylabel: K1…K4／DI1…DI4}：HA 用它取代 entity 名稱裡的 endpoint 號碼
  *   （只對 HA 白名單內的 VID/PID 有效，測試 VID 0xFFF1/PID 0x8000 在內；docs/v4-matter-research.md §1）。
  * Endpoint 號碼依建立順序自動分配，實際值記在 s_ep_*（開機 log 會印）。
@@ -29,6 +30,7 @@
 
 extern "C" {
 #include "fa_modes.h"
+#include "fa_color.h"
 }
 
 using namespace esp_matter;
@@ -42,6 +44,7 @@ static fa_io_cfg_t s_cfg;                        /* 下拉選單顯示用的目�
 static uint16_t    s_ep_plug[4], s_ep_contact[4], s_ep_sel[4][FA_SEL_KINDS];
 static bool        s_local;                      /* 持鎖期間 app 自己在更新屬性 */
 static volatile bool s_commissioned, s_net_up;
+static uint16_t    s_ep_light;                   /* 開發板彩色燈（沒有＝0） */
 
 /* ---------------- Fixed Label（自訂 DeviceInfoProvider：標籤寫死在韌體，不必燒工廠分區） ---------------- */
 /* 沒有 User Label、語系、曆法相關 cluster，那些清單一律回空。 */
@@ -162,9 +165,41 @@ static int find_plug(uint16_t ep)
 }
 
 /* ---------------- controller → app ---------------- */
+#if CONFIG_FA_DEVKIT_RGB
+/* ---------------- 開發板彩色燈：讀目前屬性 → RGB ---------------- */
+static constexpr uint8_t kLightMax = 96;         /* WS2812 全亮太刺眼：最亮壓在 96/255 */
+
+static esp_matter_attr_val_t light_attr(uint32_t cluster, uint32_t attr)
+{
+    esp_matter_attr_val_t v = esp_matter_invalid(nullptr);
+    attribute::get_val(attribute::get(s_ep_light, cluster, attr), &v);
+    return v;
+}
+
+static void refresh_light()
+{
+    if (!s_ep_light || !s_cb.light) return;
+    bool on = light_attr(OnOff::Id, OnOff::Attributes::OnOff::Id).val.b;
+    esp_matter_attr_val_t lv = light_attr(LevelControl::Id, LevelControl::Attributes::CurrentLevel::Id);
+    uint8_t level = (lv.type == ESP_MATTER_VAL_TYPE_INVALID || lv.val.u8 == 0xFF) ? 254 : lv.val.u8;   /* null＝最亮 */
+    uint8_t mode = light_attr(ColorControl::Id, ColorControl::Attributes::ColorMode::Id).val.u8;
+    fa_rgb_t c;
+    if (mode == chip::to_underlying(ColorControl::ColorModeEnum::kColorTemperatureMireds))
+        c = fa_color_from_mireds(light_attr(ColorControl::Id, ColorControl::Attributes::ColorTemperatureMireds::Id).val.u16,
+                                 level, kLightMax);
+    else
+        c = fa_color_from_xy(light_attr(ColorControl::Id, ColorControl::Attributes::CurrentX::Id).val.u16,
+                             light_attr(ColorControl::Id, ColorControl::Attributes::CurrentY::Id).val.u16, level, kLightMax);
+    s_cb.light(on, c.r, c.g, c.b);
+}
+#endif
+
 static esp_err_t on_attr(attribute::callback_type_t type, uint16_t ep, uint32_t cluster, uint32_t attr,
                          esp_matter_attr_val_t *val, void *priv)
 {
+#if CONFIG_FA_DEVKIT_RGB
+    if (type == attribute::POST_UPDATE && ep == s_ep_light && s_ep_light) { refresh_light(); return ESP_OK; }
+#endif
     if (type != attribute::PRE_UPDATE || s_local) return ESP_OK;
     if (cluster == OnOff::Id && attr == OnOff::Attributes::OnOff::Id) {
         int ch = find_plug(ep);
@@ -213,6 +248,9 @@ static void on_event(const ChipDeviceEvent *e, intptr_t arg)
         otPlatRadioSetTransmitPower(esp_openthread_get_instance(), CONFIG_FA_TX_POWER);
         esp_openthread_lock_release();
         ESP_LOGI(TAG, "Thread 發射功率 %d dBm", CONFIG_FA_TX_POWER);
+#endif
+#if CONFIG_FA_DEVKIT_RGB
+        refresh_light();                         /* 開機時套用上次存的燈狀態（屬性有存 NVS） */
 #endif
         [[fallthrough]];
     case DeviceEventType::kCommissioningComplete:
@@ -287,7 +325,12 @@ extern "C" void fa_net_factory_reset(void)
 
 /* ---------------- 建立節點 ---------------- */
 /* EP0 root＋4 插座＋4 接點感測器＋12 下拉選單；esp-matter 預設上限 16，超過的 endpoint 會在執行時建立失敗 */
-static constexpr int kEndpointCount = 1 + 4 + 4 + 4 * FA_SEL_KINDS;
+#if CONFIG_FA_DEVKIT_RGB
+static constexpr int kDevkitEndpoints = 1;       /* EP21 開發板彩色燈 */
+#else
+static constexpr int kDevkitEndpoints = 0;
+#endif
+static constexpr int kEndpointCount = 1 + 4 + 4 + 4 * FA_SEL_KINDS + kDevkitEndpoints;
 static_assert(CONFIG_ESP_MATTER_MAX_DYNAMIC_ENDPOINT_COUNT >= kEndpointCount,
               "CONFIG_ESP_MATTER_MAX_DYNAMIC_ENDPOINT_COUNT 太小（sdkconfig.defaults）");
 static const char *const SEL_NAME[FA_SEL_KINDS] = {"DI%d 模式", "K%d 模式", "K%d 點動時間"};
@@ -337,6 +380,23 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
             s_ep_sel[ch][k] = ep ? endpoint::get_id(ep) : 0;
         }
     }
+#if CONFIG_FA_DEVKIT_RGB
+    {
+        extended_color_light::config_t c;
+        c.on_off.on_off = false;
+        c.on_off_lighting.start_up_on_off = nullptr;
+        c.level_control.current_level = 254;
+        c.level_control.on_level = 254;
+        c.level_control_lighting.start_up_current_level = 254;
+        c.color_control.color_mode = chip::to_underlying(ColorControl::ColorModeEnum::kCurrentXAndCurrentY);
+        c.color_control.enhanced_color_mode = chip::to_underlying(ColorControl::EnhancedColorModeEnum::kCurrentXAndCurrentY);
+        c.color_control_color_temperature.start_up_color_temperature_mireds = nullptr;
+        endpoint_t *ep = extended_color_light::create(node, &c, ENDPOINT_FLAG_NONE, nullptr);
+        if (!ep) ESP_LOGE(TAG, "開發板彩色燈 endpoint 建立失敗");
+        s_ep_light = ep ? endpoint::get_id(ep) : 0;
+        ESP_LOGI(TAG, "開發板彩色燈：endpoint %u", s_ep_light);
+    }
+#endif
     int failed = 0;
     for (int ch = 0; ch < 4; ch++) {
         failed += !s_ep_plug[ch] + !s_ep_contact[ch];

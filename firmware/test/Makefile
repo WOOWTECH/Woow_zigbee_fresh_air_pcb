@@ -7,7 +7,7 @@ test: test_core
 	./test_core
 
 test_core: $(SRC) $(wildcard $(CORE)/include/*.h) unity_lite.h
-	$(CC) $(CFLAGS) -o $@ $(SRC)
+	$(CC) $(CFLAGS) -o $@ $(SRC) -lm
 
 clean:
 	rm -f test_core
