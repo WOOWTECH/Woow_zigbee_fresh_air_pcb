@@ -36,5 +36,10 @@ CONFIG_USE_MINIMAL_MDNS=n
 CONFIG_ENABLE_EXTENDED_DISCOVERY=y
 CONFIG_ENABLE_CHIP_SHELL=y
 CONFIG_SUPPORT_GROUPCAST_CLUSTER=n
+# Fixed Label 用韌體內建的 DeviceInfoProvider（fa_matter.cpp FaDeviceInfo）
+CONFIG_CUSTOM_DEVICE_INFO_PROVIDER=y
+# Matter 工廠資料放 partitions.csv 的 fctry 分區（預設是 "nvs"，量產燒 esp-matter-mfg-tool 的產物時才對得上）。
+# 開發期 fctry 是空的，配對碼仍用 CONFIG_ENABLE_TEST_SETUP_PARAMS 的測試值。
+CONFIG_CHIP_FACTORY_NAMESPACE_PARTITION_LABEL="fctry"
 # OTA 之後的版本再開（docs/v4-matter-spec.md §9）
 CONFIG_ENABLE_OTA_REQUESTOR=n

@@ -4,6 +4,8 @@
  *   EP1–4   On/Off Plug-in Unit   K1–K4
  *   EP5–8   Contact Sensor        DI1–DI4（Boolean State.StateValue：接通＝true）
  *   EP9–20  Mode Select ×12       每路 DI 模式／DO 模式／點動時間（HA 顯示成下拉選單；選項見 fa_modes）
+ *   EP1–8 另帶 Fixed Label {ha_entitylabel: K1…K4／DI1…DI4}：HA 用它取代 entity 名稱裡的 endpoint 號碼
+ *   （只對 HA 白名單內的 VID/PID 有效，測試 VID 0xFFF1/PID 0x8000 在內；docs/v4-matter-research.md §1）。
  * Endpoint 號碼依建立順序自動分配，實際值記在 s_ep_*（開機 log 會印）。
  *
  * 執行緒：attribute 回呼在 CHIP 執行緒；fa_net_sync／report_* 從 app 的任務呼叫，用 ScopedChipStackLock 持鎖。
@@ -16,6 +18,8 @@
 #include <esp_matter.h>
 #include <app/clusters/mode-select-server/supported-modes-manager.h>
 #include <app/server/Server.h>
+#include <esp_matter_providers.h>
+#include <platform/DeviceInfoProvider.h>
 #if CHIP_DEVICE_CONFIG_ENABLE_THREAD
 #include <platform/ESP32/OpenthreadLauncher.h>
 #include <esp_openthread.h>
@@ -38,6 +42,65 @@ static fa_io_cfg_t s_cfg;                        /* 下拉選單顯示用的目�
 static uint16_t    s_ep_plug[4], s_ep_contact[4], s_ep_sel[4][FA_SEL_KINDS];
 static bool        s_local;                      /* 持鎖期間 app 自己在更新屬性 */
 static volatile bool s_commissioned, s_net_up;
+
+/* ---------------- Fixed Label（自訂 DeviceInfoProvider：標籤寫死在韌體，不必燒工廠分區） ---------------- */
+/* 沒有 User Label、語系、曆法相關 cluster，那些清單一律回空。 */
+class FaDeviceInfo : public chip::DeviceLayer::DeviceInfoProvider {
+public:
+    void setLabel(int i, chip::EndpointId ep, const char *value)
+    {
+        mEp[i] = ep;
+        snprintf(mValue[i], sizeof mValue[i], "%s", value);
+    }
+    FixedLabelIterator *IterateFixedLabel(chip::EndpointId ep) override
+    {
+        const char *v = nullptr;
+        for (int i = 0; i < kN; i++)
+            if (mEp[i] == ep && mEp[i] != 0) v = mValue[i];
+        return chip::Platform::New<FixedIt>(v);
+    }
+    UserLabelIterator *IterateUserLabel(chip::EndpointId) override { return chip::Platform::New<Empty<UserLabelType>>(); }
+    SupportedLocalesIterator *IterateSupportedLocales() override { return chip::Platform::New<Empty<chip::CharSpan>>(); }
+    SupportedCalendarTypesIterator *IterateSupportedCalendarTypes() override { return chip::Platform::New<Empty<CalendarType>>(); }
+
+protected:
+    CHIP_ERROR SetUserLabelLength(chip::EndpointId, size_t) override { return CHIP_ERROR_NOT_IMPLEMENTED; }
+    CHIP_ERROR GetUserLabelLength(chip::EndpointId, size_t &val) override { val = 0; return CHIP_NO_ERROR; }
+    CHIP_ERROR SetUserLabelAt(chip::EndpointId, size_t, const UserLabelType &) override { return CHIP_ERROR_NOT_IMPLEMENTED; }
+    CHIP_ERROR DeleteUserLabelAt(chip::EndpointId, size_t) override { return CHIP_ERROR_NOT_IMPLEMENTED; }
+
+private:
+    static constexpr int kN = 8;
+    static constexpr const char *kKey = "ha_entitylabel";   /* HA 比對時不分大小寫；key／value 都要少於 16 字元 */
+    chip::EndpointId mEp[kN] = {};
+    char mValue[kN][8] = {};
+
+    template <typename T> class Empty : public Iterator<T> {
+    public:
+        size_t Count() override { return 0; }
+        bool Next(T &) override { return false; }
+        void Release() override { chip::Platform::Delete(this); }
+    };
+    class FixedIt : public FixedLabelIterator {
+    public:
+        explicit FixedIt(const char *value) : mV(value) {}
+        size_t Count() override { return mV ? 1 : 0; }
+        bool Next(FixedLabelType &out) override
+        {
+            if (!mV || mDone) return false;
+            out.label = chip::CharSpan::fromCharString(kKey);
+            out.value = chip::CharSpan::fromCharString(mV);
+            mDone = true;
+            return true;
+        }
+        void Release() override { chip::Platform::Delete(this); }
+
+    private:
+        const char *mV;
+        bool mDone = false;
+    };
+};
+static FaDeviceInfo s_info;
 
 /* ---------------- Mode Select 選項清單（全部 12 個選單共用一個 manager，依 endpoint 回傳） ---------------- */
 using ModeOption = ModeSelect::Structs::ModeOptionStruct::Type;
@@ -225,6 +288,16 @@ extern "C" void fa_net_factory_reset(void)
 /* ---------------- 建立節點 ---------------- */
 static const char *const SEL_NAME[FA_SEL_KINDS] = {"DI%d 模式", "K%d 模式", "K%d 點動時間"};
 
+static void add_label(endpoint_t *ep, int slot, const char *fmt, int n)
+{
+    if (!ep) return;
+    char v[8];
+    snprintf(v, sizeof v, fmt, n);
+    cluster::fixed_label::config_t fl;
+    if (!cluster::fixed_label::create(ep, &fl, CLUSTER_FLAG_SERVER)) ESP_LOGE(TAG, "EP%u 建 Fixed Label 失敗", endpoint::get_id(ep));
+    s_info.setLabel(slot, endpoint::get_id(ep), v);
+}
+
 extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
 {
     s_cb = *cb;
@@ -240,12 +313,14 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
         c.on_off.on_off = false;
         endpoint_t *ep = on_off_plug_in_unit::create(node, &c, ENDPOINT_FLAG_NONE, nullptr);
         s_ep_plug[ch] = ep ? endpoint::get_id(ep) : 0;
+        add_label(ep, ch, "K%d", ch + 1);
     }
     for (int ch = 0; ch < 4; ch++) {
         contact_sensor::config_t c;
         c.boolean_state.state_value = false;
         endpoint_t *ep = contact_sensor::create(node, &c, ENDPOINT_FLAG_NONE, nullptr);
         s_ep_contact[ch] = ep ? endpoint::get_id(ep) : 0;
+        add_label(ep, 4 + ch, "DI%d", ch + 1);
     }
     for (int ch = 0; ch < 4; ch++) {
         for (int k = 0; k < FA_SEL_KINDS; k++) {
@@ -270,5 +345,6 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
     };
     set_openthread_platform_config(&ot);
 #endif
+    esp_matter::set_custom_device_info_provider(&s_info);   /* 一定要在 start 前：Fixed Label cluster 沒有 provider 會 VerifyOrDie */
     if (esp_matter::start(on_event) != ESP_OK) ESP_LOGE(TAG, "Matter 啟動失敗");
 }
