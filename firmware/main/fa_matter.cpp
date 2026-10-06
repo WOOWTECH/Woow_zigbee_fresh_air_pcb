@@ -286,6 +286,10 @@ extern "C" void fa_net_factory_reset(void)
 }
 
 /* ---------------- 建立節點 ---------------- */
+/* EP0 root＋4 插座＋4 接點感測器＋12 下拉選單；esp-matter 預設上限 16，超過的 endpoint 會在執行時建立失敗 */
+static constexpr int kEndpointCount = 1 + 4 + 4 + 4 * FA_SEL_KINDS;
+static_assert(CONFIG_ESP_MATTER_MAX_DYNAMIC_ENDPOINT_COUNT >= kEndpointCount,
+              "CONFIG_ESP_MATTER_MAX_DYNAMIC_ENDPOINT_COUNT 太小（sdkconfig.defaults）");
 static const char *const SEL_NAME[FA_SEL_KINDS] = {"DI%d 模式", "K%d 模式", "K%d 點動時間"};
 
 static void add_label(endpoint_t *ep, int slot, const char *fmt, int n)
@@ -333,6 +337,12 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
             s_ep_sel[ch][k] = ep ? endpoint::get_id(ep) : 0;
         }
     }
+    int failed = 0;
+    for (int ch = 0; ch < 4; ch++) {
+        failed += !s_ep_plug[ch] + !s_ep_contact[ch];
+        for (int k = 0; k < FA_SEL_KINDS; k++) failed += !s_ep_sel[ch][k];
+    }
+    if (failed) ESP_LOGE(TAG, "%d 個 endpoint 建立失敗（見上方 esp-matter 錯誤），controller 會看不到這些功能", failed);
     ESP_LOGI(TAG, "Endpoint：插座 %u–%u、接點感測器 %u–%u、下拉選單 %u–%u", s_ep_plug[0], s_ep_plug[3],
              s_ep_contact[0], s_ep_contact[3], s_ep_sel[0][0], s_ep_sel[3][FA_SEL_KINDS - 1]);
 

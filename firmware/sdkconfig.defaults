@@ -36,6 +36,8 @@ CONFIG_USE_MINIMAL_MDNS=n
 CONFIG_ENABLE_EXTENDED_DISCOVERY=y
 CONFIG_ENABLE_CHIP_SHELL=y
 CONFIG_SUPPORT_GROUPCAST_CLUSTER=n
+# endpoint 共 21 個（EP0＋插座 4＋接點感測器 4＋下拉選單 12）；預設上限 16 會讓 EP16–20 建立失敗（fa_matter.cpp 有 static_assert）
+CONFIG_ESP_MATTER_MAX_DYNAMIC_ENDPOINT_COUNT=21
 # Fixed Label 用韌體內建的 DeviceInfoProvider（fa_matter.cpp FaDeviceInfo）
 CONFIG_CUSTOM_DEVICE_INFO_PROVIDER=y
 # Matter 工廠資料放 partitions.csv 的 fctry 分區（預設是 "nvs"，量產燒 esp-matter-mfg-tool 的產物時才對得上）。
