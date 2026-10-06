@@ -1,0 +1,3 @@
+# 實驗：只有彩色燈（看塗鴉等生態系給單顆 Matter 彩色燈什麼面板）。疊在 devkit 上：
+# idf.py -B build_lightonly -D SDKCONFIG=sdkconfig.lightonly -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.devkit;sdkconfig.defaults.lightonly" build
+CONFIG_FA_DEVKIT_LIGHT_ONLY=y
