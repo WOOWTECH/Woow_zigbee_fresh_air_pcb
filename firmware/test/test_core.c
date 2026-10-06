@@ -652,6 +652,16 @@ TEST(color_mireds_warm_vs_cool)
     CHECK(extreme.b > 0);
 }
 
+TEST(led_wire_byte_order)
+{
+    uint8_t b[3];
+    fa_rgb_t red = {200, 10, 3};
+    fa_led_wire_bytes(red, FA_LED_ORDER_GRB, b);
+    CHECK(b[0] == 10 && b[1] == 200 && b[2] == 3);                /* 標準 WS2812：G、R、B */
+    fa_led_wire_bytes(red, FA_LED_ORDER_RGB, b);
+    CHECK(b[0] == 200 && b[1] == 10 && b[2] == 3);                /* RGB 燈珠：R、G、B */
+}
+
 int main(void)
 {
     RUN(mode_from_dip);
@@ -700,6 +710,7 @@ int main(void)
     RUN(color_xy_primaries_and_white);
     RUN(color_level_scales_and_caps);
     RUN(color_mireds_warm_vs_cool);
+    RUN(led_wire_byte_order);
     printf("%d tests, %d failures\n", ul_run, ul_fail);
     return ul_fail ? 1 : 0;
 }

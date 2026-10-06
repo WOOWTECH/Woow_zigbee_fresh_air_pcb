@@ -20,6 +20,19 @@ menu "WO30109 新風控制器"
             關掉就回到上面的狀態顯示。endpoint 上限要 ≥22（sdkconfig.defaults.devkit）。
             正式板子 GPIO8 沒接東西，不要開。
 
+    choice FA_DEVKIT_RGB_ORDER
+        prompt "板載 RGB 燈的位元組順序"
+        depends on FA_DEVKIT_RGB
+        default FA_DEVKIT_RGB_ORDER_RGB
+        help
+            標準 WS2812 是 GRB。使用者的 ESP32-C6 開發板實測是 RGB（用 GRB 送時紅綠對調）。
+            換開發板時如果紅綠顛倒，改這個。
+        config FA_DEVKIT_RGB_ORDER_RGB
+            bool "RGB（使用者的 C6 開發板）"
+        config FA_DEVKIT_RGB_ORDER_GRB
+            bool "GRB（標準 WS2812）"
+    endchoice
+
     config FA_RELAY_PWM_HOLD
         bool "繼電器 PWM 降壓保持（吸合後改 PWM，省 12V 電流）"
         default y

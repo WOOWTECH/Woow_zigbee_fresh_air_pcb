@@ -27,3 +27,7 @@ bool fa_led_level(const fa_led_in_t *in, uint32_t t_ms);
  *   全關＝暗白；K1 紅、K2 綠、K3 藍；K4 開時再加白（顏色變淡）。亮度壓低，避免刺眼。 */
 typedef struct { uint8_t r, g, b; } fa_rgb_t;
 fa_rgb_t fa_led_rgb(bool level, const bool on[4]);
+
+/* WS2812 類燈珠送出的位元組順序：標準 WS2812 是 GRB；有些開發板的燈珠是 RGB（紅綠會對調）。 */
+typedef enum { FA_LED_ORDER_GRB = 0, FA_LED_ORDER_RGB = 1 } fa_led_order_t;
+void fa_led_wire_bytes(fa_rgb_t c, fa_led_order_t order, uint8_t out[3]);

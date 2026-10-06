@@ -6,9 +6,11 @@
 static rmt_channel_handle_t s_ch;
 static rmt_encoder_handle_t s_enc;
 static uint32_t s_last = 0xFFFFFFFF;
+static fa_led_order_t s_order;
 
-esp_err_t ws2812_init(int gpio)
+esp_err_t ws2812_init(int gpio, fa_led_order_t order)
 {
+    s_order = order;
     rmt_tx_channel_config_t cc = {.gpio_num = gpio, .clk_src = RMT_CLK_SRC_DEFAULT, .resolution_hz = RES_HZ,
                                   .mem_block_symbols = 48, .trans_queue_depth = 2};
     esp_err_t err = rmt_new_tx_channel(&cc, &s_ch);
@@ -26,11 +28,11 @@ esp_err_t ws2812_set(uint8_t r, uint8_t g, uint8_t b)
 {
     uint32_t v = (uint32_t)r << 16 | (uint32_t)g << 8 | b;
     if (!s_ch || v == s_last) return ESP_OK;
-    static uint8_t grb[3];                                  /* 傳送完成前 buffer 要一直有效 */
+    static uint8_t wire[3];                                 /* 傳送完成前 buffer 要一直有效 */
     rmt_tx_wait_all_done(s_ch, 10);                         /* 上一筆送完（還要 ≥50µs 低電位才鎖存：呼叫間隔 10ms 足夠） */
-    grb[0] = g; grb[1] = r; grb[2] = b;
+    fa_led_wire_bytes((fa_rgb_t){r, g, b}, s_order, wire);
     rmt_transmit_config_t tc = {.loop_count = 0};
-    esp_err_t err = rmt_transmit(s_ch, s_enc, grb, sizeof grb, &tc);
+    esp_err_t err = rmt_transmit(s_ch, s_enc, wire, sizeof wire, &tc);
     if (err == ESP_OK) s_last = v;
     return err;
 }

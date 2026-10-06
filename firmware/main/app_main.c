@@ -548,7 +548,12 @@ void app_main(void)
 
     gpio_setup();                              /* 繼電器腳先拉低，LEDC 接手前不會吸合 */
 #if CONFIG_FA_DEVKIT_RGB
-    if (ws2812_init(8) != ESP_OK) ESP_LOGE(TAG, "板載 RGB 燈（GPIO8）初始化失敗");
+#if CONFIG_FA_DEVKIT_RGB_ORDER_RGB
+    const fa_led_order_t order = FA_LED_ORDER_RGB;
+#else
+    const fa_led_order_t order = FA_LED_ORDER_GRB;
+#endif
+    if (ws2812_init(8, order) != ESP_OK) ESP_LOGE(TAG, "板載 RGB 燈（GPIO8）初始化失敗");
     else ESP_LOGI(TAG, "開發板模式：板載 RGB 燈（GPIO8）顯示狀態與 K1–K4");
 #endif
     coil_init();

@@ -44,7 +44,9 @@ static fa_io_cfg_t s_cfg;                        /* 下拉選單顯示用的目�
 static uint16_t    s_ep_plug[4], s_ep_contact[4], s_ep_sel[4][FA_SEL_KINDS];
 static bool        s_local;                      /* 持鎖期間 app 自己在更新屬性 */
 static volatile bool s_commissioned, s_net_up;
-static uint16_t    s_ep_light;                   /* 開發板彩色燈（沒有＝0） */
+#if CONFIG_FA_DEVKIT_RGB
+static uint16_t    s_ep_light;                   /* 開發板彩色燈（建立失敗＝0） */
+#endif
 
 /* ---------------- Fixed Label（自訂 DeviceInfoProvider：標籤寫死在韌體，不必燒工廠分區） ---------------- */
 /* 沒有 User Label、語系、曆法相關 cluster，那些清單一律回空。 */
@@ -168,6 +170,8 @@ static int find_plug(uint16_t ep)
 #if CONFIG_FA_DEVKIT_RGB
 /* ---------------- 開發板彩色燈：讀目前屬性 → RGB ---------------- */
 static constexpr uint8_t kLightMax = 96;         /* WS2812 全亮太刺眼：最亮壓在 96/255 */
+static constexpr uint16_t kMiredsMin = 167;      /* 色溫範圍 2000–6000K（使用者指定）：10^6/6000≈167 */
+static constexpr uint16_t kMiredsMax = 500;      /* 10^6/2000＝500 */
 
 static esp_matter_attr_val_t light_attr(uint32_t cluster, uint32_t attr)
 {
@@ -391,6 +395,10 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
         c.color_control.color_mode = chip::to_underlying(ColorControl::ColorModeEnum::kCurrentXAndCurrentY);
         c.color_control.enhanced_color_mode = chip::to_underlying(ColorControl::EnhancedColorModeEnum::kCurrentXAndCurrentY);
         c.color_control_color_temperature.start_up_color_temperature_mireds = nullptr;
+        c.color_control_color_temperature.color_temp_physical_min_mireds = kMiredsMin;   /* controller 的色溫滑桿依這兩個值 */
+        c.color_control_color_temperature.color_temp_physical_max_mireds = kMiredsMax;
+        c.color_control_color_temperature.couple_color_temp_to_level_min_mireds = kMiredsMin;
+        c.color_control_color_temperature.color_temperature_mireds = 250;                  /* 4000K */
         endpoint_t *ep = extended_color_light::create(node, &c, ENDPOINT_FLAG_NONE, nullptr);
         if (!ep) ESP_LOGE(TAG, "開發板彩色燈 endpoint 建立失敗");
         s_ep_light = ep ? endpoint::get_id(ep) : 0;

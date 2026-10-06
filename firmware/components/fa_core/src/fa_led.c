@@ -32,3 +32,10 @@ fa_rgb_t fa_led_rgb(bool level, const bool on[4])
     if (on[3]) { c.r += 15; c.g += 15; c.b += 15; }
     return c;
 }
+
+void fa_led_wire_bytes(fa_rgb_t c, fa_led_order_t order, uint8_t out[3])
+{
+    out[0] = order == FA_LED_ORDER_RGB ? c.r : c.g;
+    out[1] = order == FA_LED_ORDER_RGB ? c.g : c.r;
+    out[2] = c.b;
+}

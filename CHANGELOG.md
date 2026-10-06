@@ -52,6 +52,7 @@ IRM-02-12 額定 12V 167mA。ESP32-C6 Zigbee 發射 +12dBm 峰值 185mA@3.3V，�
 - 開發板模式 `CONFIG_FA_DEVKIT_RGB`：板載 WS2812（GPIO8）用顏色顯示 K1–K4、亮滅顯示狀態（RMT 自寫驅動，不加相依）；`sdkconfig.defaults.devkit` 給 Thread 開發板用。
 - 開發期廠商／產品名稱：`main/chip_project_config.h`（WOOWTECH／WO30109 新風控制器／硬體 V3.4），原本顯示 TEST_VENDOR／TEST_PRODUCT。
 - 開發板模式多一個 Matter 彩色燈（EP21，Extended Color Light）：controller 開燈時板載 RGB 顯示它設的顏色／亮度／色溫，關燈回到狀態顯示；`fa_core/fa_color`（xy、色溫 → RGB，主機測試）。
+- 開發板彩色燈：色溫限制 2000–6000K（physical 167–500 mireds，超出由 Matter 夾住）；板載燈位元組順序可選（`FA_DEVKIT_RGB_ORDER`，預設 RGB，修正紅綠對調）。
 - 上機驗收清單 `docs/verification/V4.0-checklist.md`（開發板 Wi-Fi／Thread／V3.4 板三階段，63 項）；查證筆記 `docs/v4-matter-research.md`。
 
 ## [3.4] — 照外殼 4-02-3 放回原板框

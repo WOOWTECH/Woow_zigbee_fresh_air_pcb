@@ -2,6 +2,7 @@
 #pragma once
 #include <stdint.h>
 #include "esp_err.h"
+#include "fa_led.h"
 
-esp_err_t ws2812_init(int gpio);
+esp_err_t ws2812_init(int gpio, fa_led_order_t order);
 esp_err_t ws2812_set(uint8_t r, uint8_t g, uint8_t b);   /* 沒變就不送 */
