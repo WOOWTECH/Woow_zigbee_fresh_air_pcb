@@ -12,6 +12,7 @@
 #include "fa_led.h"
 #include "fa_color.h"
 #include "fa_cover.h"
+#include "fa_hvac.h"
 #include <string.h>
 
 int ul_fail, ul_run;
@@ -832,6 +833,98 @@ TEST(cover_stops_exactly_on_target_with_unaligned_ticks)
     CHECK_EQ(fa_cover_pos(&c), 7300);
 }
 
+/* ---------------- 新風溫控 ---------------- */
+static const fa_hvac_cfg_t HV_CFG = {.hyst = 50, .min_cycle_ms = 180000, .purge_ms = 60000};
+
+TEST(hvac_heat_hysteresis_and_min_cycle)
+{
+    fa_hvac_t h; fa_hvac_init(&h, &HV_CFG);
+    fa_hvac_cmd_t c = {.power = true, .mode = FA_HVAC_MODE_HEAT, .heat_sp = 2200, .cool_sp = 2600, .fan_mode = FA_FAN_LOW};
+    uint32_t t = 1000;
+    fa_hvac_out_t o = fa_hvac_tick(&h, &c, 2160, t);              /* 21.6：在緩衝內，不開 */
+    CHECK(!o.heat);
+    o = fa_hvac_tick(&h, &c, 2150, t);                             /* 21.5＝設定－0.5：開（開機第一次不用等） */
+    CHECK(o.heat && !o.cool && (o.running & FA_RUN_HEAT));
+    o = fa_hvac_tick(&h, &c, 2260, t + 60000);                     /* 22.6 但才開 1 分鐘：維持 */
+    CHECK(o.heat);
+    o = fa_hvac_tick(&h, &c, 2240, t + 200000);                    /* 22.4 未達＋0.5：維持 */
+    CHECK(o.heat);
+    o = fa_hvac_tick(&h, &c, 2250, t + 200000);                    /* 22.5 且開滿 3 分鐘：關 */
+    CHECK(!o.heat && !(o.running & FA_RUN_HEAT));
+    o = fa_hvac_tick(&h, &c, 2100, t + 260000);                    /* 很冷但才關 1 分鐘：等 */
+    CHECK(!o.heat);
+    o = fa_hvac_tick(&h, &c, 2100, t + 380001);                    /* 關滿 3 分鐘：再開 */
+    CHECK(o.heat);
+}
+
+TEST(hvac_cool_and_mode_switch)
+{
+    fa_hvac_t h; fa_hvac_init(&h, &HV_CFG);
+    fa_hvac_cmd_t c = {.power = true, .mode = FA_HVAC_MODE_COOL, .heat_sp = 2200, .cool_sp = 2600, .fan_mode = FA_FAN_LOW};
+    uint32_t t = 0;
+    fa_hvac_out_t o = fa_hvac_tick(&h, &c, 2650, t);               /* 26.5＝設定＋0.5：開製冷 */
+    CHECK(o.cool && !o.heat && (o.running & FA_RUN_COOL));
+    c.mode = FA_HVAC_MODE_HEAT;                                    /* 切加熱：製冷立刻關 */
+    o = fa_hvac_tick(&h, &c, 2000, t + 10000);
+    CHECK(!o.cool && o.heat);                                      /* 加熱從沒開過：可以立刻開 */
+    c.mode = FA_HVAC_MODE_COOL;                                    /* 又切回製冷：製冷要等關滿 3 分鐘 */
+    o = fa_hvac_tick(&h, &c, 3000, t + 20000);
+    CHECK(!o.heat && !o.cool);
+    o = fa_hvac_tick(&h, &c, 3000, t + 190001);
+    CHECK(o.cool);
+    c.mode = 1;                                                    /* 不支援的模式（自動）＝關 */
+    o = fa_hvac_tick(&h, &c, 3000, t + 200000);
+    CHECK(!o.cool && !o.heat);
+}
+
+TEST(hvac_power_off_and_unknown_temp)
+{
+    fa_hvac_t h; fa_hvac_init(&h, &HV_CFG);
+    fa_hvac_cmd_t c = {.power = true, .mode = FA_HVAC_MODE_HEAT, .heat_sp = 2200, .cool_sp = 2600, .fan_mode = FA_FAN_HIGH};
+    fa_hvac_out_t o = fa_hvac_tick(&h, &c, 1800, 0);
+    CHECK(o.heat && o.fan == 3 && (o.running & FA_RUN_FAN3));
+    c.power = false;                                               /* 關機：加熱立刻關，風扇低速散熱 60 秒 */
+    o = fa_hvac_tick(&h, &c, 1800, 5000);
+    CHECK(!o.heat && o.fan == 1);
+    o = fa_hvac_tick(&h, &c, 1800, 64999);
+    CHECK(o.fan == 1);
+    o = fa_hvac_tick(&h, &c, 1800, 65001);
+    CHECK(o.fan == 0 && o.running == 0);
+    fa_hvac_t h2; fa_hvac_init(&h2, &HV_CFG);
+    c.power = true;
+    o = fa_hvac_tick(&h2, &c, FA_HVAC_TEMP_UNKNOWN, 0);            /* 溫度未知：不加熱 */
+    CHECK(!o.heat);
+}
+
+TEST(hvac_fan_modes)
+{
+    fa_hvac_t h; fa_hvac_init(&h, &HV_CFG);
+    fa_hvac_cmd_t c = {.power = true, .mode = FA_HVAC_MODE_OFF, .heat_sp = 2200, .cool_sp = 2600, .fan_mode = FA_FAN_MED};
+    fa_hvac_out_t o = fa_hvac_tick(&h, &c, 2300, 0);               /* 溫控關、開機：照風速換氣 */
+    CHECK(o.fan == 2 && (o.running & (FA_RUN_FAN | FA_RUN_FAN2)) == (FA_RUN_FAN | FA_RUN_FAN2));
+    c.fan_mode = FA_FAN_ON;   o = fa_hvac_tick(&h, &c, 2300, 0); CHECK(o.fan == 3);
+    c.fan_mode = FA_FAN_OFF;  o = fa_hvac_tick(&h, &c, 2300, 0); CHECK(o.fan == 0 && o.running == 0);
+    c.fan_mode = FA_FAN_AUTO; o = fa_hvac_tick(&h, &c, 2300, 0); CHECK(o.fan == 1);   /* 沒需求：低速換氣 */
+    c.mode = FA_HVAC_MODE_HEAT;
+    o = fa_hvac_tick(&h, &c, 1950, 0); CHECK(o.heat && o.fan == 3);   /* 差 2.5 °C：高 */
+    o = fa_hvac_tick(&h, &c, 2050, 0); CHECK(o.fan == 2);             /* 差 1.5：中 */
+    o = fa_hvac_tick(&h, &c, 2150, 0); CHECK(o.fan == 1);             /* 差 0.5：低 */
+    c.fan_mode = FA_FAN_OFF;
+    o = fa_hvac_tick(&h, &c, 2150, 0); CHECK(o.heat && o.fan == 1);   /* 風速關但在加熱：強制低速 */
+}
+
+TEST(hvac_rgb_color_and_brightness)
+{
+    fa_hvac_out_t o = {.heat = true, .fan = 3};
+    fa_rgb_t c = fa_hvac_rgb(&o, 96); CHECK(c.r == 96 && c.g == 0 && c.b == 0);
+    o = (fa_hvac_out_t){.cool = true, .fan = 1};
+    c = fa_hvac_rgb(&o, 96); CHECK(c.b == 20 && c.r == 0 && c.g == 0);
+    o = (fa_hvac_out_t){.fan = 2};
+    c = fa_hvac_rgb(&o, 96); CHECK(c.g == 50 && c.r == 0 && c.b == 0);
+    o = (fa_hvac_out_t){0};
+    c = fa_hvac_rgb(&o, 96); CHECK(c.r == 0 && c.g == 0 && c.b == 0);
+}
+
 int main(void)
 {
     RUN(mode_from_dip);
@@ -891,6 +984,11 @@ int main(void)
     RUN(cover_travel_presets_and_labels);
     RUN(cover_rgb_motion_and_position);
     RUN(cover_stops_exactly_on_target_with_unaligned_ticks);
+    RUN(hvac_heat_hysteresis_and_min_cycle);
+    RUN(hvac_cool_and_mode_switch);
+    RUN(hvac_power_off_and_unknown_temp);
+    RUN(hvac_fan_modes);
+    RUN(hvac_rgb_color_and_brightness);
     printf("%d tests, %d failures\n", ul_run, ul_fail);
     return ul_fail ? 1 : 0;
 }

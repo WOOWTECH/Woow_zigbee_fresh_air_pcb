@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "fa_io.h"
+#include "fa_hvac.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,6 +24,8 @@ typedef struct {
     uint16_t (*cover_stop)(void);                  /* 回傳停下的位置 */
     void (*cover_travel)(uint32_t travel_ms);      /* HA 下拉選單改了行程時間 */
     void (*cover_reverse)(bool reversed);          /* Window Covering Mode.MotorDirectionReversed（馬達方向反轉：K1／K2 對調） */
+    /* 新風溫控（實驗 CONFIG_FA_DEVKIT_HVAC_ONLY）：controller 改了開關／模式／設定溫度／風速，給一份完整指令（CHIP 執行緒） */
+    void (*hvac)(const fa_hvac_cmd_t *cmd);
 } fa_net_cb_t;
 
 void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg);
@@ -37,6 +40,8 @@ void fa_net_report_cfg(const fa_io_cfg_t *cfg);
 /* 窗簾：fa_net_start 前給開機時的位置與行程；之後位置／目標變了就回報（目標＝位置表示停著） */
 void fa_net_cover_init(uint16_t pos, uint32_t travel_ms);
 void fa_net_report_cover(uint16_t pos, uint16_t target);
+/* 新風溫控：回報室溫（0.01 °C，未知＝FA_HVAC_TEMP_UNKNOWN）、運轉狀態（FA_RUN_*）、實際風速（0–3） */
+void fa_net_report_hvac(int16_t temp, uint8_t running, uint8_t fan);
 /* 離開網路並清除網路資料，完成後重開機、重新開放配對 */
 void fa_net_factory_reset(void);
 

@@ -7,6 +7,8 @@
  *   EP21    Extended Color Light  只在 CONFIG_FA_DEVKIT_LIGHT（預設關）：板載 RGB 燈，讓 controller 能測燈
  *   實驗 CONFIG_FA_DEVKIT_COVER_ONLY：只建一個 Window Covering endpoint（Drapery，Lift＋位置感知），
  *   「窗簾行程時間」下拉選單是同一個 endpoint 上的 Mode Select cluster
+ *   實驗 CONFIG_FA_DEVKIT_HVAC_ONLY：只建一個 Room Air Conditioner endpoint（OnOff＋Thermostat 加熱／製冷＋Fan Control
+ *   低中高自動＋攝氏顯示），單一 endpoint 讓塗鴉有機會給原生面板
  *   EP1–8 另帶 Fixed Label {ha_entitylabel: K1…K4／DI1…DI4}：HA 用它取代 entity 名稱裡的 endpoint 號碼
  *   （只對 HA 白名單內的 VID/PID 有效，測試 VID 0xFFF1/PID 0x8000 在內；docs/v4-matter-research.md §1）。
  * Endpoint 號碼依建立順序自動分配，實際值記在 s_ep_*（開機 log 會印）。
@@ -21,6 +23,8 @@
 #include <esp_matter.h>
 #include <app/clusters/mode-select-server/supported-modes-manager.h>
 #include <app/clusters/window-covering-server/window-covering-server.h>
+#include <app/clusters/fan-control-server/fan-control-delegate.h>
+#include <app/clusters/fan-control-server/CodegenIntegration.h>
 #include <app/server/Server.h>
 #include <esp_matter_providers.h>
 #include <platform/DeviceInfoProvider.h>
@@ -54,6 +58,8 @@ static uint16_t    s_ep_light;                   /* 開發板彩色燈（建立�
 static uint16_t    s_ep_cover, s_ep_travel;      /* 窗簾與行程時間選單（沒建＝0） */
 static uint16_t    s_cover_pos = FA_COVER_FULL;  /* fa_net_cover_init 給的開機位置 */
 static uint32_t    s_cover_travel_ms = FA_COVER_TRAVEL_DEFAULT_MS;
+static uint16_t    s_ep_hvac;                    /* 新風溫控（沒建＝0） */
+static uint8_t     s_hvac_fan = FA_FAN_OFF;      /* Fan Control 目前的風速指令（FA_FAN_*，由 delegate 更新） */
 
 /* ---------------- Fixed Label（自訂 DeviceInfoProvider：標籤寫死在韌體，不必燒工廠分區） ---------------- */
 /* 沒有 User Label、語系、曆法相關 cluster，那些清單一律回空。 */
@@ -219,6 +225,54 @@ public:
 };
 static FaCoverDelegate s_cover_delegate;
 
+/* ---------------- 新風溫控：讀目前指令給 app ---------------- */
+static esp_matter_attr_val_t hvac_attr(uint32_t cluster, uint32_t attr)
+{
+    esp_matter_attr_val_t v = esp_matter_invalid(nullptr);
+    attribute::get_val(attribute::get(s_ep_hvac, cluster, attr), &v);
+    return v;
+}
+
+static void push_hvac()
+{
+    if (!s_ep_hvac || !s_cb.hvac) return;
+    fa_hvac_cmd_t c = {};
+    c.power = hvac_attr(OnOff::Id, OnOff::Attributes::OnOff::Id).val.b;
+    c.mode = hvac_attr(Thermostat::Id, Thermostat::Attributes::SystemMode::Id).val.u8;
+    c.heat_sp = hvac_attr(Thermostat::Id, Thermostat::Attributes::OccupiedHeatingSetpoint::Id).val.i16;
+    c.cool_sp = hvac_attr(Thermostat::Id, Thermostat::Attributes::OccupiedCoolingSetpoint::Id).val.i16;
+    c.fan_mode = s_hvac_fan;
+    ESP_LOGI(TAG, "溫控指令：%s、模式 %u、加熱 %d.%02d °C、製冷 %d.%02d °C、風速 %u", c.power ? "開" : "關", c.mode,
+             c.heat_sp / 100, c.heat_sp % 100, c.cool_sp / 100, c.cool_sp % 100, c.fan_mode);
+    s_cb.hvac(&c);
+}
+
+/* Fan Control 在這版 SDK 是 code-driven cluster（不走 esp-matter 屬性回呼）：改由 delegate 收風速 */
+class FaFanDelegate : public FanControl::Delegate {
+public:
+    chip::Protocols::InteractionModel::Status HandleStep(FanControl::StepDirectionEnum, bool, bool) override
+    {
+        return chip::Protocols::InteractionModel::Status::UnsupportedCommand;
+    }
+    void OnFanDriveStateChanged(const FanControl::FanDriveState &st) override
+    {
+        uint8_t f;
+        switch (st.mode) {
+        case FanControl::FanModeEnum::kAuto: f = FA_FAN_AUTO; break;
+        case FanControl::FanModeEnum::kOff:  f = FA_FAN_OFF; break;
+        default:                                               /* 低／中／高／開：以速度為準（HA 的 fan 實體拖百分比時只改速度） */
+            if (!st.speedSetting.IsNull() && st.speedSetting.Value() >= 1 && st.speedSetting.Value() <= 3)
+                f = st.speedSetting.Value();
+            else f = st.mode == FanControl::FanModeEnum::kLow ? FA_FAN_LOW
+                   : st.mode == FanControl::FanModeEnum::kMedium ? FA_FAN_MED : FA_FAN_HIGH;
+            break;
+        }
+        s_hvac_fan = f;
+        push_hvac();
+    }
+};
+static FaFanDelegate s_fan_delegate;
+
 /* ---------------- controller → app ---------------- */
 #if CONFIG_FA_DEVKIT_LIGHT
 /* ---------------- 開發板彩色燈：讀目前屬性 → RGB ---------------- */
@@ -270,6 +324,18 @@ static esp_err_t on_attr(attribute::callback_type_t type, uint16_t ep, uint32_t 
         bool rev = val->val.u8 & chip::to_underlying(WindowCovering::Mode::kMotorDirectionReversed);
         ESP_LOGI(TAG, "窗簾：馬達方向%s", rev ? "反轉（K1＝關、K2＝開）" : "正常（K1＝開、K2＝關）");
         if (s_cb.cover_reverse) s_cb.cover_reverse(rev);
+        return ESP_OK;
+    }
+    if (ep && ep == s_ep_hvac && !s_local) {
+        /* 只支援 關(0)／製冷(3)／加熱(4)：CHIP server 只依 CSO 擋，不擋自動、送風、除濕 */
+        if (type == attribute::PRE_UPDATE && cluster == Thermostat::Id && attr == Thermostat::Attributes::SystemMode::Id) {
+            uint8_t m = val->val.u8;
+            if (m != FA_HVAC_MODE_OFF && m != FA_HVAC_MODE_COOL && m != FA_HVAC_MODE_HEAT) {
+                ESP_LOGW(TAG, "溫控：拒絕不支援的模式 %u", m);
+                return ESP_FAIL;
+            }
+        }
+        if (type == attribute::POST_UPDATE && (cluster == OnOff::Id || cluster == Thermostat::Id)) push_hvac();
         return ESP_OK;
     }
     if (type != attribute::PRE_UPDATE || s_local) return ESP_OK;
@@ -330,6 +396,7 @@ static void on_event(const ChipDeviceEvent *e, intptr_t arg)
 #if CONFIG_FA_DEVKIT_LIGHT
         refresh_light();                         /* 開機時套用上次存的燈狀態（屬性有存 NVS） */
 #endif
+        push_hvac();                             /* 溫控：開機時套用存在 NVS 的開關／模式／設定溫度 */
         [[fallthrough]];
     case DeviceEventType::kCommissioningComplete:
     case DeviceEventType::kFabricRemoved:
@@ -409,6 +476,20 @@ extern "C" void fa_net_report_cover(uint16_t pos, uint16_t target)
                   esp_matter_nullable_uint16(pos));
 }
 
+extern "C" void fa_net_report_hvac(int16_t temp, uint8_t running, uint8_t fan)
+{
+    if (!s_ep_hvac) return;
+    lock::ScopedChipStackLock lk(portMAX_DELAY);
+    update_locked(s_ep_hvac, Thermostat::Id, Thermostat::Attributes::LocalTemperature::Id,
+                  temp == FA_HVAC_TEMP_UNKNOWN ? esp_matter_nullable_int16(nullable<int16_t>()) : esp_matter_nullable_int16(temp));
+    update_locked(s_ep_hvac, Thermostat::Id, Thermostat::Attributes::ThermostatRunningState::Id, esp_matter_bitmap16(running));
+    if (FanControlCluster *fc = FanControl::FindClusterOnEndpoint(s_ep_hvac)) {
+        static const uint8_t PCT[] = {0, 33, 66, 100};
+        fc->SetSpeedCurrent(fan > 3 ? 3 : fan);
+        fc->SetPercentCurrent(PCT[fan > 3 ? 3 : fan]);
+    }
+}
+
 extern "C" bool fa_net_joined(void) { return s_commissioned && s_net_up; }
 extern "C" bool fa_net_commissioned(void) { return s_commissioned; }
 
@@ -450,7 +531,7 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
     node_t *node = node::create(&node_cfg, on_attr, on_identify);
     if (!node) { ESP_LOGE(TAG, "建立 Matter node 失敗"); return; }
 
-#if !CONFIG_FA_DEVKIT_LIGHT_ONLY && !CONFIG_FA_DEVKIT_COVER_ONLY
+#if !CONFIG_FA_DEVKIT_LIGHT_ONLY && !CONFIG_FA_DEVKIT_COVER_ONLY && !CONFIG_FA_DEVKIT_HVAC_ONLY
     for (int ch = 0; ch < 4; ch++) {
         on_off_plug_in_unit::config_t c;
         c.on_off.on_off = false;
@@ -547,8 +628,52 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
     ESP_LOGW(TAG, "實驗模式：只有窗簾（endpoint %u，行程時間選單同一個 endpoint：%s）；開機位置 %u.%02u%%、行程 %lu ms",
              s_ep_cover, s_ep_travel ? "有" : "建立失敗", s_cover_pos / 100, s_cover_pos % 100, (unsigned long)s_cover_travel_ms);
 #endif
+#if CONFIG_FA_DEVKIT_HVAC_ONLY
+    {
+        /* Room Air Conditioner：add() 會自動建 OnOff（含 DeadFront）＋Thermostat 並強制加製冷；這裡再加加熱 */
+        room_air_conditioner::config_t c;
+        c.on_off.on_off = false;
+        c.thermostat.feature_flags = cluster::thermostat::feature::heating::get_id() | cluster::thermostat::feature::cooling::get_id();
+        c.thermostat.control_sequence_of_operation = chip::to_underlying(Thermostat::ControlSequenceOfOperationEnum::kCoolingAndHeating);
+        c.thermostat.system_mode = FA_HVAC_MODE_HEAT;
+        c.thermostat.local_temperature = nullable<int16_t>();
+        c.thermostat.features.heating.occupied_heating_setpoint = 2200;
+        c.thermostat.features.cooling.occupied_cooling_setpoint = 2600;
+        endpoint_t *ep = room_air_conditioner::create(node, &c, ENDPOINT_FLAG_NONE, nullptr);
+        s_ep_hvac = ep ? endpoint::get_id(ep) : 0;
+        if (ep) {
+            /* 上下限（esp-matter 不自動建；HA 只讀 Abs）：加熱 5–35 °C、製冷 16–35 °C；運轉狀態 */
+            cluster_t *tc = cluster::get(ep, Thermostat::Id);
+            cluster::thermostat::attribute::create_abs_min_heat_setpoint_limit(tc, 500);
+            cluster::thermostat::attribute::create_abs_max_heat_setpoint_limit(tc, 3500);
+            cluster::thermostat::attribute::create_min_heat_setpoint_limit(tc, 500);
+            cluster::thermostat::attribute::create_max_heat_setpoint_limit(tc, 3500);
+            cluster::thermostat::attribute::create_abs_min_cool_setpoint_limit(tc, 1600);
+            cluster::thermostat::attribute::create_abs_max_cool_setpoint_limit(tc, 3500);
+            cluster::thermostat::attribute::create_min_cool_setpoint_limit(tc, 1600);
+            cluster::thermostat::attribute::create_max_cool_setpoint_limit(tc, 3500);
+            cluster::thermostat::attribute::create_thermostat_running_state(tc, 0);
+            cluster::thermostat_user_interface_configuration::config_t ui;        /* 攝氏 */
+            cluster::thermostat_user_interface_configuration::create(ep, &ui, CLUSTER_FLAG_SERVER);
+            /* 風速：關／低／中／高／自動（FanModeSequence 2）、三段速度 */
+            cluster::fan_control::config_t fc;
+            fc.fan_mode = chip::to_underlying(FanControl::FanModeEnum::kAuto);
+            fc.fan_mode_sequence = chip::to_underlying(FanControl::FanModeSequenceEnum::kOffLowMedHighAuto);
+            fc.delegate = &s_fan_delegate;
+            cluster_t *fan = cluster::fan_control::create(ep, &fc, CLUSTER_FLAG_SERVER);
+            cluster::fan_control::feature::multi_speed::config_t ms;
+            ms.speed_max = 3;
+            if (!fan || cluster::fan_control::feature::multi_speed::add(fan, &ms) != ESP_OK ||
+                cluster::fan_control::feature::fan_auto::add(fan) != ESP_OK)
+                ESP_LOGE(TAG, "溫控：建立風速功能失敗");
+        }
+        ESP_LOGW(TAG, "實驗模式：只有新風溫控（Room Air Conditioner，endpoint %u）", s_ep_hvac);
+    }
+#endif
     int failed = 0;
-#if CONFIG_FA_DEVKIT_COVER_ONLY
+#if CONFIG_FA_DEVKIT_HVAC_ONLY
+    failed = !s_ep_hvac;
+#elif CONFIG_FA_DEVKIT_COVER_ONLY
     failed = !s_ep_cover + !s_ep_travel;
 #elif CONFIG_FA_DEVKIT_LIGHT_ONLY
     ESP_LOGW(TAG, "實驗模式：只有彩色燈，插座／感測器／下拉選單不建立");

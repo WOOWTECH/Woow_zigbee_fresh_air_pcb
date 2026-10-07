@@ -6,6 +6,7 @@
  *   ui_task      每 10ms 掃按鍵、更新燈號
  *   網路層       fa_net.h → fa_matter.cpp（V3.x 的 Zigbee 版在標籤 v3.4）
  */
+#include <stdlib.h>
 #include <string.h>
 
 #include "driver/gpio.h"
@@ -31,6 +32,9 @@
 #include "fa_net.h"
 #if CONFIG_FA_DEVKIT_COVER_ONLY
 #include "fa_cover.h"
+#endif
+#if CONFIG_FA_DEVKIT_HVAC_ONLY
+#include "driver/temperature_sensor.h"
 #endif
 #if CONFIG_FA_DEVKIT_RGB
 #include "ws2812.h"
@@ -326,8 +330,8 @@ static void rf_task(void *arg)
         fa_action_t a[8];
         xSemaphoreTake(s_lock, portMAX_DELAY);
         bool known = fa_remotes_has(&s_remotes, addr);
-#if CONFIG_FA_DEVKIT_COVER_ONLY
-        int n = 0;                                                 /* 窗簾實驗：遙控器先不接（K1、K2 歸窗簾） */
+#if CONFIG_FA_DEVKIT_COVER_ONLY || CONFIG_FA_DEVKIT_HVAC_ONLY
+        int n = 0;                                                 /* 窗簾／溫控實驗：遙控器先不接繼電器 */
         (void)known;
 #else
         int n = (known && ch >= 0) ? fa_io_rf(&s_io, &s_relays, (uint8_t)ch, t, a, 8) : 0;
@@ -553,6 +557,69 @@ static void cover_step(uint32_t t)
 }
 #endif
 
+#if CONFIG_FA_DEVKIT_HVAC_ONLY
+/* ---------------- 新風溫控實驗：fa_hvac 決定輸出，這裡接溫度、log、Matter、RGB ---------------- */
+static fa_hvac_t        s_hvac;                  /* 以下三個由 s_lock 保護 */
+static fa_hvac_cmd_t    s_hvac_cmd;
+static fa_hvac_out_t    s_hvac_out;
+static temperature_sensor_handle_t s_tsens;
+
+static void net_hvac(const fa_hvac_cmd_t *cmd)  /* CHIP 執行緒呼叫 */
+{
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    s_hvac_cmd = *cmd;
+    xSemaphoreGive(s_lock);
+}
+
+static void hvac_init(void)
+{
+    static const fa_hvac_cfg_t cfg = {.hyst = CONFIG_FA_HVAC_HYST_CENTI, .min_cycle_ms = CONFIG_FA_HVAC_MIN_CYCLE_S * 1000u,
+                                      .purge_ms = 60000};
+    fa_hvac_init(&s_hvac, &cfg);
+    temperature_sensor_config_t tc = TEMPERATURE_SENSOR_CONFIG_DEFAULT(10, 80);
+    if (temperature_sensor_install(&tc, &s_tsens) != ESP_OK || temperature_sensor_enable(s_tsens) != ESP_OK) {
+        ESP_LOGE(TAG, "溫控：晶片溫度感測器初始化失敗");
+        s_tsens = NULL;
+    }
+    ESP_LOGW(TAG, "溫控：緩衝 ±%d.%02d °C、最少開關 %d 秒、溫度來源＝晶片內建感測器（補償 %d.%02d °C）",
+             CONFIG_FA_HVAC_HYST_CENTI / 100, CONFIG_FA_HVAC_HYST_CENTI % 100, CONFIG_FA_HVAC_MIN_CYCLE_S,
+             CONFIG_FA_HVAC_TEMP_OFFSET_CENTI / 100, abs(CONFIG_FA_HVAC_TEMP_OFFSET_CENTI % 100));
+}
+
+/* 每 10ms：每 2 秒讀一次溫度；輸出改變就 log；狀態改變或溫度變 ≥0.1 °C 或每 30 秒回報 Matter */
+static void hvac_step(uint32_t t)
+{
+    static int16_t temp = FA_HVAC_TEMP_UNKNOWN, rep_temp = FA_HVAC_TEMP_UNKNOWN;
+    static uint32_t last_read, last_rep;
+    static fa_hvac_out_t last = {0};
+    static bool first = true;
+    if (s_tsens && (first || t - last_read >= 2000)) {
+        float c;
+        if (temperature_sensor_get_celsius(s_tsens, &c) == ESP_OK)
+            temp = (int16_t)(c * 100 + (c >= 0 ? 0.5f : -0.5f)) + CONFIG_FA_HVAC_TEMP_OFFSET_CENTI;
+        last_read = t;
+    }
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    fa_hvac_cmd_t cmd = s_hvac_cmd;
+    fa_hvac_out_t o = fa_hvac_tick(&s_hvac, &cmd, temp, t);
+    s_hvac_out = o;
+    xSemaphoreGive(s_lock);
+    bool changed = first || o.heat != last.heat || o.cool != last.cool || o.fan != last.fan;
+    if (changed)
+        ESP_LOGI(TAG, "溫控輸出：加熱 %s、製冷 %s、風速 %u（室溫 %d.%02d °C、%s、模式 %u、加熱設定 %d.%02d、製冷設定 %d.%02d）",
+                 o.heat ? "ON" : "off", o.cool ? "ON" : "off", o.fan, temp / 100, abs(temp % 100),
+                 cmd.power ? "開機" : "關機", cmd.mode, cmd.heat_sp / 100, cmd.heat_sp % 100, cmd.cool_sp / 100, cmd.cool_sp % 100);
+    int diff = (temp == FA_HVAC_TEMP_UNKNOWN || rep_temp == FA_HVAC_TEMP_UNKNOWN) ? 1000 : abs(temp - rep_temp);
+    if (changed || o.running != last.running || diff >= 10 || t - last_rep >= 30000) {
+        fa_net_report_hvac(temp, o.running, o.fan);
+        rep_temp = temp;
+        last_rep = t;
+    }
+    last = o;
+    first = false;
+}
+#endif
+
 static void ui_task(void *arg)
 {
     fa_button_t btn;
@@ -581,6 +648,8 @@ static void ui_task(void *arg)
         }
 #if CONFIG_FA_DEVKIT_COVER_ONLY
         cover_step(t);                                             /* 窗簾實驗：DI／遙控器不接繼電器（K1、K2 歸窗簾） */
+#elif CONFIG_FA_DEVKIT_HVAC_ONLY
+        hvac_step(t);                                              /* 溫控實驗：DI／遙控器不接繼電器 */
 #else
         for (uint8_t k = 0; k < FA_CH; k++) {                     /* 接線 DI：每 10ms 取樣，fa_io 內部防彈跳 */
             fa_action_t a[8];
@@ -615,7 +684,21 @@ static void ui_task(void *arg)
             xSemaphoreTake(s_lock, portMAX_DELAY);
             memcpy(on, s_relays.on, sizeof on);
             xSemaphoreGive(s_lock);
-#if CONFIG_FA_DEVKIT_COVER_ONLY
+#if CONFIG_FA_DEVKIT_HVAC_ONLY
+            bool special = led.held_ms >= FA_BTN_LONG_MIN || led.learning || led.identifying || led.net != FA_LED_NET_ONLINE;
+            if (special) {                                         /* 異常狀態照常閃白燈 */
+                bool none[FA_CH] = {0};
+                fa_rgb_t c = fa_led_rgb(fa_led_level(&led, t), none);
+                ws2812_set(c.r, c.g, c.b);
+            } else {                                               /* 加熱紅、製冷藍、送風綠，亮度＝風速 */
+                xSemaphoreTake(s_lock, portMAX_DELAY);
+                fa_hvac_out_t ho = s_hvac_out;
+                xSemaphoreGive(s_lock);
+                fa_rgb_t c = fa_hvac_rgb(&ho, 96);
+                ws2812_set(c.r, c.g, c.b);
+            }
+            (void)on;
+#elif CONFIG_FA_DEVKIT_COVER_ONLY
             bool special = led.held_ms >= FA_BTN_LONG_MIN || led.learning || led.identifying || led.net != FA_LED_NET_ONLINE;
             if (special) {                                         /* 異常狀態（未配對、斷線…）照常閃白燈 */
                 bool none[FA_CH] = {0};
@@ -712,6 +795,9 @@ void app_main(void)
     fa_nfc_port_start(PIN_NFC_SDA, PIN_NFC_SCL, &nfc_cb);
 #endif
     {
+#if CONFIG_FA_DEVKIT_HVAC_ONLY
+        hvac_init();
+#endif
 #if CONFIG_FA_DEVKIT_COVER_ONLY
         uint16_t cpos = FA_COVER_FULL;                             /* 沒存過：當作全關 */
         uint32_t ctravel = FA_COVER_TRAVEL_DEFAULT_MS;
@@ -725,6 +811,9 @@ void app_main(void)
                                               .identify = net_identify,
 #if CONFIG_FA_DEVKIT_LIGHT
                                               .light = net_light,
+#endif
+#if CONFIG_FA_DEVKIT_HVAC_ONLY
+                                              .hvac = net_hvac,
 #endif
 #if CONFIG_FA_DEVKIT_COVER_ONLY
                                               .cover_goto = net_cover_goto, .cover_stop = net_cover_stop,

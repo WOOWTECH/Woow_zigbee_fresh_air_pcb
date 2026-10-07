@@ -44,5 +44,8 @@ firmware/sdkconfig.lightonly.old
 firmware/build_coveronly/
 firmware/sdkconfig.coveronly
 firmware/sdkconfig.coveronly.old
+firmware/build_hvaconly/
+firmware/sdkconfig.hvaconly
+firmware/sdkconfig.hvaconly.old
 firmware/managed_components/
 firmware/test/test_core

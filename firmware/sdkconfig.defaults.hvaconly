@@ -1,0 +1,3 @@
+# 實驗：只有新風溫控（Room Air Conditioner：冷暖＋三段風速）。疊在 devkit 上：
+# idf.py -B build_hvaconly -D SDKCONFIG=sdkconfig.hvaconly -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.devkit;sdkconfig.defaults.hvaconly" build
+CONFIG_FA_DEVKIT_HVAC_ONLY=y

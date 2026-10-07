@@ -20,7 +20,7 @@ menu "WO30109 新風控制器"
 
     config FA_DEVKIT_LIGHT
         bool "開發板：多一個 Matter 彩色燈（EP21）"
-        depends on FA_DEVKIT_RGB && !FA_DEVKIT_COVER_ONLY
+        depends on FA_DEVKIT_RGB && !FA_DEVKIT_COVER_ONLY && !FA_DEVKIT_HVAC_ONLY
         default n
         help
             板載 RGB 燈同時當 Matter Extended Color Light（色盤、色溫 2000–6000K、亮度），給 controller 測燈用。
@@ -37,12 +37,40 @@ menu "WO30109 新風控制器"
 
     config FA_DEVKIT_COVER_ONLY
         bool "實驗：整台裝置只有窗簾（K1＝開、K2＝關，時間式比例控制）"
-        depends on FA_DEVKIT_RGB && !FA_DEVKIT_LIGHT_ONLY
+        depends on FA_DEVKIT_RGB && !FA_DEVKIT_LIGHT_ONLY && !FA_DEVKIT_HVAC_ONLY
         default n
         help
             Matter 只建 Window Covering（Drapery，可設百分比）＋「窗簾行程時間」下拉選單（5–180 秒）。
             位置由行程時間推算（fa_core/fa_cover），停下時存 NVS；換方向先停 500ms；到端點多跑行程的 1/10。
             BOOT 短按＝開／停／關循環；板載 RGB：開中綠、關中紅、停著白光亮度＝開度。DI 與遙控器不接繼電器。
+
+    config FA_DEVKIT_HVAC_ONLY
+        bool "實驗：整台裝置只有新風溫控（冷暖＋三段風速，Room Air Conditioner）"
+        depends on FA_DEVKIT_RGB && !FA_DEVKIT_LIGHT_ONLY
+        default n
+        help
+            Matter 只建一個 Room Air Conditioner endpoint：開關、溫控（關／製冷／加熱）、風速（關／低／中／高／自動）、攝氏。
+            溫控邏輯在 fa_core/fa_hvac（±FA_HVAC_HYST、最少開／關 FA_HVAC_MIN_CYCLE_S、加熱關後吹風 60 秒）。
+            開發板沒有繼電器：輸出看 log 與板載 RGB（加熱紅、製冷藍、送風綠，亮度＝風速）。
+            室溫先用 ESP32-C6 內建溫度感測器（量的是晶片溫度，比室溫高；只用來測控制與各 App 面板）。
+
+    config FA_HVAC_HYST_CENTI
+        int "溫控緩衝（0.01 °C）"
+        depends on FA_DEVKIT_HVAC_ONLY
+        range 10 300
+        default 50
+
+    config FA_HVAC_MIN_CYCLE_S
+        int "加熱／製冷最少開、最少關（秒）"
+        depends on FA_DEVKIT_HVAC_ONLY
+        range 0 1800
+        default 180
+
+    config FA_HVAC_TEMP_OFFSET_CENTI
+        int "室溫補償（0.01 °C，加在晶片溫度上）"
+        depends on FA_DEVKIT_HVAC_ONLY
+        range -5000 5000
+        default 0
 
     choice FA_DEVKIT_RGB_ORDER
         prompt "板載 RGB 燈的位元組順序"
