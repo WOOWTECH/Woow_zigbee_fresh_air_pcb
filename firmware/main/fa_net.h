@@ -15,7 +15,7 @@ typedef struct {
     bool (*on_cfg)(const fa_io_cfg_t *cfg);
     /* controller 要裝置「找自己」（Identify）：seconds＞0 開始快閃 seconds 秒，0＝停止 */
     void (*identify)(uint16_t seconds);
-    /* 開發板模式（CONFIG_FA_DEVKIT_RGB）：板載 RGB 燈當 Extended Color Light，controller 改了就回呼（已換算成 RGB＋亮度） */
+    /* 開發板彩色燈（CONFIG_FA_DEVKIT_LIGHT）：板載 RGB 燈當 Extended Color Light，controller 改了就回呼（已換算成 RGB＋亮度） */
     void (*light)(bool on, uint8_t r, uint8_t g, uint8_t b);
     /* 窗簾（實驗 CONFIG_FA_DEVKIT_COVER_ONLY）：位置 0＝全開…10000＝全關（Matter 慣例）。
      * 在 CHIP 執行緒呼叫：不可在裡面呼叫 fa_net_*（會重複拿 chip 鎖） */

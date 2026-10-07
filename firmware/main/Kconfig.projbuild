@@ -15,14 +15,21 @@ menu "WO30109 新風控制器"
         default n
         help
             給 ESP32-C6-DevKitC-1 這類有板載 WS2812 的開發板用（規格 D8）。燈號的亮滅與 GPIO2 狀態燈相同，
-            亮的時候用顏色顯示繼電器：全關暗白、K1 紅、K2 綠、K3 藍、K4 開時加白。
-            另外多一個 Matter Extended Color Light（EP21），controller（HA 等）把燈打開時改顯示它設的顏色與亮度，
-            關掉就回到上面的狀態顯示。endpoint 上限要 ≥22（sdkconfig.defaults.devkit）。
+            亮的時候用顏色顯示繼電器：K1 紅、K2 綠、K3 藍、K4 開時加白；正常且全關時全暗。
             正式板子 GPIO8 沒接東西，不要開。
 
+    config FA_DEVKIT_LIGHT
+        bool "開發板：多一個 Matter 彩色燈（EP21）"
+        depends on FA_DEVKIT_RGB && !FA_DEVKIT_COVER_ONLY
+        default n
+        help
+            板載 RGB 燈同時當 Matter Extended Color Light（色盤、色溫 2000–6000K、亮度），給 controller 測燈用。
+            controller 開燈時顯示它設的顏色，關燈回到 K1–K4 狀態顯示。endpoint 上限要 ≥22。
+            預設關：4DI/DO 版本不出現燈（使用者 10/07 要求拿掉）。
     config FA_DEVKIT_LIGHT_ONLY
         bool "實驗：整台裝置只有彩色燈（不建插座、感測器、下拉選單）"
         depends on FA_DEVKIT_RGB
+        select FA_DEVKIT_LIGHT
         default n
         help
             測試第三方生態系（例如塗鴉）遇到「單純一顆 Matter 彩色燈」時給什麼面板，

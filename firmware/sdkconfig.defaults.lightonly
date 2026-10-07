@@ -1,3 +1,5 @@
 # 實驗：只有彩色燈（看塗鴉等生態系給單顆 Matter 彩色燈什麼面板）。疊在 devkit 上：
 # idf.py -B build_lightonly -D SDKCONFIG=sdkconfig.lightonly -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.devkit;sdkconfig.defaults.lightonly" build
 CONFIG_FA_DEVKIT_LIGHT_ONLY=y
+# LIGHT_ONLY 會開 FA_DEVKIT_LIGHT：endpoint 計數含 EP21，上限要 22
+CONFIG_ESP_MATTER_MAX_DYNAMIC_ENDPOINT_COUNT=22

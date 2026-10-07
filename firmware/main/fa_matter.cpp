@@ -4,7 +4,7 @@
  *   EP1–4   On/Off Plug-in Unit   K1–K4
  *   EP5–8   Contact Sensor        DI1–DI4（Boolean State.StateValue：接通＝true）
  *   EP9–20  Mode Select ×12       每路 DI 模式／DO 模式／點動時間（HA 顯示成下拉選單；選項見 fa_modes）
- *   EP21    Extended Color Light  只在開發板模式（CONFIG_FA_DEVKIT_RGB）：板載 RGB 燈，讓 controller 能測燈
+ *   EP21    Extended Color Light  只在 CONFIG_FA_DEVKIT_LIGHT（預設關）：板載 RGB 燈，讓 controller 能測燈
  *   實驗 CONFIG_FA_DEVKIT_COVER_ONLY：只建 Window Covering（Drapery，Lift＋位置感知）＋「窗簾行程時間」下拉選單
  *   EP1–8 另帶 Fixed Label {ha_entitylabel: K1…K4／DI1…DI4}：HA 用它取代 entity 名稱裡的 endpoint 號碼
  *   （只對 HA 白名單內的 VID/PID 有效，測試 VID 0xFFF1/PID 0x8000 在內；docs/v4-matter-research.md §1）。
@@ -47,7 +47,7 @@ static fa_io_cfg_t s_cfg;                        /* 下拉選單顯示用的目�
 static uint16_t    s_ep_plug[4], s_ep_contact[4], s_ep_sel[4][FA_SEL_KINDS];
 static bool        s_local;                      /* 持鎖期間 app 自己在更新屬性 */
 static volatile bool s_commissioned, s_net_up;
-#if CONFIG_FA_DEVKIT_RGB
+#if CONFIG_FA_DEVKIT_LIGHT
 static uint16_t    s_ep_light;                   /* 開發板彩色燈（建立失敗＝0） */
 #endif
 static uint16_t    s_ep_cover, s_ep_travel;      /* 窗簾與行程時間選單（沒建＝0） */
@@ -219,7 +219,7 @@ public:
 static FaCoverDelegate s_cover_delegate;
 
 /* ---------------- controller → app ---------------- */
-#if CONFIG_FA_DEVKIT_RGB
+#if CONFIG_FA_DEVKIT_LIGHT
 /* ---------------- 開發板彩色燈：讀目前屬性 → RGB ---------------- */
 static constexpr uint8_t kLightMax = 96;         /* WS2812 全亮太刺眼：最亮壓在 96/255 */
 static constexpr uint16_t kMiredsMin = 167;      /* 色溫範圍 2000–6000K（使用者指定）：10^6/6000≈167 */
@@ -261,7 +261,7 @@ static void refresh_light()
 static esp_err_t on_attr(attribute::callback_type_t type, uint16_t ep, uint32_t cluster, uint32_t attr,
                          esp_matter_attr_val_t *val, void *priv)
 {
-#if CONFIG_FA_DEVKIT_RGB
+#if CONFIG_FA_DEVKIT_LIGHT
     if (type == attribute::POST_UPDATE && ep == s_ep_light && s_ep_light) { refresh_light(); return ESP_OK; }
 #endif
     if (type != attribute::PRE_UPDATE || s_local) return ESP_OK;
@@ -319,7 +319,7 @@ static void on_event(const ChipDeviceEvent *e, intptr_t arg)
         esp_openthread_lock_release();
         ESP_LOGI(TAG, "Thread 發射功率 %d dBm", CONFIG_FA_TX_POWER);
 #endif
-#if CONFIG_FA_DEVKIT_RGB
+#if CONFIG_FA_DEVKIT_LIGHT
         refresh_light();                         /* 開機時套用上次存的燈狀態（屬性有存 NVS） */
 #endif
         [[fallthrough]];
@@ -412,8 +412,8 @@ extern "C" void fa_net_factory_reset(void)
 
 /* ---------------- 建立節點 ---------------- */
 /* EP0 root＋4 插座＋4 接點感測器＋12 下拉選單；esp-matter 預設上限 16，超過的 endpoint 會在執行時建立失敗 */
-#if CONFIG_FA_DEVKIT_RGB
-static constexpr int kDevkitEndpoints = 1;       /* EP21 開發板彩色燈 */
+#if CONFIG_FA_DEVKIT_LIGHT
+static constexpr int kDevkitEndpoints = 1;       /* EP21 開發板彩色燈（CONFIG_FA_DEVKIT_LIGHT） */
 #else
 static constexpr int kDevkitEndpoints = 0;
 #endif
@@ -469,7 +469,7 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
         }
     }
 #endif
-#if CONFIG_FA_DEVKIT_RGB && !CONFIG_FA_DEVKIT_COVER_ONLY
+#if CONFIG_FA_DEVKIT_LIGHT
     {
         extended_color_light::config_t c;
         c.on_off.on_off = false;

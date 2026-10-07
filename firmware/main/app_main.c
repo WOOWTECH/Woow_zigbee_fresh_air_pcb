@@ -416,7 +416,7 @@ static void nfc_get_status(fa_nfc_status_t *st)
 
 static void nfc_learn(void) { s_learn_until_us = esp_timer_get_time() + 20 * 1000000LL; }
 static void nfc_identify(void) { s_identify_until_us = esp_timer_get_time() + 5 * 1000000LL; }
-#if CONFIG_FA_DEVKIT_RGB
+#if CONFIG_FA_DEVKIT_LIGHT
 static volatile uint32_t s_light_rgb;            /* bit24＝開；低 24 bit＝RGB（controller 設的開發板彩色燈） */
 static void net_light(bool on, uint8_t r, uint8_t g, uint8_t b)
 {
@@ -604,7 +604,6 @@ static void ui_task(void *arg)
             xSemaphoreTake(s_lock, portMAX_DELAY);
             memcpy(on, s_relays.on, sizeof on);
             xSemaphoreGive(s_lock);
-            uint32_t l = s_light_rgb;
 #if CONFIG_FA_DEVKIT_COVER_ONLY
             bool special = led.held_ms >= FA_BTN_LONG_MIN || led.learning || led.identifying || led.net != FA_LED_NET_ONLINE;
             if (special) {                                         /* 異常狀態（未配對、斷線…）照常閃白燈 */
@@ -619,11 +618,15 @@ static void ui_task(void *arg)
                 fa_rgb_t c = fa_cover_rgb(m, pos, 96);
                 ws2812_set(c.r, c.g, c.b);
             }
-            (void)on; (void)l;
+            (void)on;
 #else
+#if CONFIG_FA_DEVKIT_LIGHT
+            uint32_t l = s_light_rgb;
             if (l >> 24)                                           /* controller 開了彩色燈：顯示它設的顏色 */
                 ws2812_set((uint8_t)(l >> 16), (uint8_t)(l >> 8), (uint8_t)l);
-            else {                                                 /* 關著：K1–K4 顏色或狀態閃燈；正常且全關時全暗 */
+            else
+#endif
+            {                                                      /* K1–K4 顏色或狀態閃燈；正常且全關時全暗 */
                 fa_rgb_t c = fa_led_rgb(fa_led_rgb_status_lit(&led, t, on), on);
                 ws2812_set(c.r, c.g, c.b);
             }
@@ -709,7 +712,7 @@ void app_main(void)
 #endif
         static const fa_net_cb_t net_cb = {.on_set = net_on_set, .on_cfg = net_on_cfg,
                                               .identify = net_identify,
-#if CONFIG_FA_DEVKIT_RGB
+#if CONFIG_FA_DEVKIT_LIGHT
                                               .light = net_light,
 #endif
 #if CONFIG_FA_DEVKIT_COVER_ONLY
