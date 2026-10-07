@@ -17,6 +17,11 @@ typedef struct {
     void (*identify)(uint16_t seconds);
     /* 開發板模式（CONFIG_FA_DEVKIT_RGB）：板載 RGB 燈當 Extended Color Light，controller 改了就回呼（已換算成 RGB＋亮度） */
     void (*light)(bool on, uint8_t r, uint8_t g, uint8_t b);
+    /* 窗簾（實驗 CONFIG_FA_DEVKIT_COVER_ONLY）：位置 0＝全開…10000＝全關（Matter 慣例）。
+     * 在 CHIP 執行緒呼叫：不可在裡面呼叫 fa_net_*（會重複拿 chip 鎖） */
+    void (*cover_goto)(uint16_t target);
+    uint16_t (*cover_stop)(void);                  /* 回傳停下的位置 */
+    void (*cover_travel)(uint32_t travel_ms);      /* HA 下拉選單改了行程時間 */
 } fa_net_cb_t;
 
 void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg);
@@ -28,6 +33,9 @@ void fa_net_sync(const bool on[4]);
 void fa_net_report_di(uint8_t mask);
 /* 進階設定改變（NFC、恢復出廠）後同步到下拉選單 */
 void fa_net_report_cfg(const fa_io_cfg_t *cfg);
+/* 窗簾：fa_net_start 前給開機時的位置與行程；之後位置／目標變了就回報（目標＝位置表示停著） */
+void fa_net_cover_init(uint16_t pos, uint32_t travel_ms);
+void fa_net_report_cover(uint16_t pos, uint16_t target);
 /* 離開網路並清除網路資料，完成後重開機、重新開放配對 */
 void fa_net_factory_reset(void);
 

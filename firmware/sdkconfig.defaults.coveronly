@@ -1,0 +1,3 @@
+# 實驗：只有窗簾（K1＝開、K2＝關）。疊在 devkit 上：
+# idf.py -B build_coveronly -D SDKCONFIG=sdkconfig.coveronly -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.devkit;sdkconfig.defaults.coveronly" build
+CONFIG_FA_DEVKIT_COVER_ONLY=y

@@ -11,6 +11,7 @@
 #include "fa_modes.h"
 #include "fa_led.h"
 #include "fa_color.h"
+#include "fa_cover.h"
 #include <string.h>
 
 int ul_fail, ul_run;
@@ -693,6 +694,131 @@ TEST(color_hs_primaries_and_white)
     CHECK(c.r >= 48 && c.r <= 52 && c.g == 0);                    /* 亮度一半、上限 100 */
 }
 
+/* ---------------- 時間式窗簾 ---------------- */
+static fa_cover_motor_t cov_run(fa_cover_t *c, uint32_t *t, uint32_t ms)   /* 每 10ms tick 一次跑 ms 毫秒 */
+{
+    fa_cover_motor_t m = FA_COVER_STOP;
+    for (uint32_t e = 0; e < ms; e += 10) { *t += 10; m = fa_cover_tick(c, *t); }
+    return m;
+}
+
+TEST(cover_moves_proportionally_and_stops_at_target)
+{
+    fa_cover_t c; uint32_t t = 1000;
+    fa_cover_init(&c, 20000, FA_COVER_FULL);                       /* 20 秒、目前全關 */
+    fa_cover_goto(&c, 5000, t);                                    /* 開到一半 */
+    CHECK_EQ(fa_cover_tick(&c, t), FA_COVER_OPENING);
+    cov_run(&c, &t, 5000);
+    CHECK(fa_cover_pos(&c) >= 7450 && fa_cover_pos(&c) <= 7550);   /* 5 秒＝1/4 行程 */
+    CHECK_EQ(cov_run(&c, &t, 5100), FA_COVER_STOP);                /* 10 秒到一半，不是端點：不 overrun */
+    CHECK_EQ(fa_cover_pos(&c), 5000);
+    CHECK(!fa_cover_busy(&c));
+}
+
+TEST(cover_end_target_runs_overrun_then_stops)
+{
+    fa_cover_t c; uint32_t t = 0;
+    fa_cover_init(&c, 10000, 5000);
+    fa_cover_goto(&c, 0, t);                                       /* 全開：要 5 秒，再多跑 1 秒 */
+    cov_run(&c, &t, 5100);
+    CHECK_EQ(fa_cover_pos(&c), 0);
+    CHECK_EQ(fa_cover_tick(&c, t), FA_COVER_OPENING);              /* 位置到了，還在 overrun */
+    CHECK_EQ(cov_run(&c, &t, 1000), FA_COVER_STOP);
+    CHECK(!fa_cover_busy(&c));
+    fa_cover_goto(&c, 0, t);                                       /* 已全開再按開：只跑 overrun 校正 */
+    CHECK_EQ(fa_cover_tick(&c, t), FA_COVER_OPENING);
+    CHECK_EQ(cov_run(&c, &t, 1100), FA_COVER_STOP);
+    CHECK_EQ(fa_cover_pos(&c), 0);
+}
+
+TEST(cover_reverse_waits_dead_time_same_dir_does_not)
+{
+    fa_cover_t c; uint32_t t = 0;
+    fa_cover_init(&c, 10000, 0);
+    fa_cover_goto(&c, FA_COVER_FULL, t);                           /* 關 */
+    cov_run(&c, &t, 3000);
+    uint16_t p = fa_cover_pos(&c);
+    fa_cover_goto(&c, 8000, t);                                    /* 同方向改目標：不停 */
+    CHECK_EQ(fa_cover_tick(&c, t), FA_COVER_CLOSING);
+    fa_cover_goto(&c, 0, t);                                       /* 反方向：先停 500ms */
+    CHECK_EQ(fa_cover_tick(&c, t), FA_COVER_STOP);
+    CHECK_EQ(cov_run(&c, &t, 400), FA_COVER_STOP);
+    CHECK(fa_cover_pos(&c) >= p && fa_cover_pos(&c) <= p + 20);   /* 死區中位置不動 */
+    CHECK_EQ(cov_run(&c, &t, 200), FA_COVER_OPENING);
+    CHECK(fa_cover_busy(&c));
+}
+
+TEST(cover_stop_freezes_and_restart_after_stop_respects_dead_time)
+{
+    fa_cover_t c; uint32_t t = 0;
+    fa_cover_init(&c, 10000, FA_COVER_FULL);
+    fa_cover_goto(&c, 0, t);
+    cov_run(&c, &t, 2000);
+    fa_cover_stop(&c, t);
+    CHECK_EQ(fa_cover_tick(&c, t), FA_COVER_STOP);
+    uint16_t p = fa_cover_pos(&c);
+    CHECK(p >= 7950 && p <= 8050);
+    cov_run(&c, &t, 1000);
+    CHECK_EQ(fa_cover_pos(&c), p);                                 /* 停了就不再變 */
+    fa_cover_goto(&c, FA_COVER_FULL, t);                           /* 停了 1 秒才反向：不用再等 */
+    CHECK_EQ(fa_cover_tick(&c, t), FA_COVER_CLOSING);
+    fa_cover_stop(&c, t);
+    fa_cover_goto(&c, 0, t + 100);                                 /* 剛停 100ms 就反向：等到滿 500ms */
+    CHECK_EQ(fa_cover_tick(&c, t + 100), FA_COVER_STOP);
+    CHECK_EQ(fa_cover_tick(&c, t + 499), FA_COVER_STOP);
+    CHECK_EQ(fa_cover_tick(&c, t + 510), FA_COVER_OPENING);
+}
+
+TEST(cover_cycle_button_and_travel_change)
+{
+    fa_cover_t c; uint32_t t = 0;
+    fa_cover_init(&c, 10000, FA_COVER_FULL);
+    fa_cover_cycle(&c, t);                                         /* 全關時按：開 */
+    CHECK_EQ(fa_cover_tick(&c, t), FA_COVER_OPENING);
+    cov_run(&c, &t, 1000);
+    fa_cover_cycle(&c, t);                                         /* 跑著按：停 */
+    CHECK_EQ(fa_cover_tick(&c, t), FA_COVER_STOP);
+    t += 1000;
+    fa_cover_cycle(&c, t);                                         /* 上次是開：這次關 */
+    CHECK_EQ(fa_cover_tick(&c, t), FA_COVER_CLOSING);
+    fa_cover_set_travel(&c, 40000, t);                             /* 跑一半改行程：位置不跳 */
+    uint16_t p = fa_cover_pos(&c);
+    cov_run(&c, &t, 4000);
+    CHECK(fa_cover_pos(&c) >= p + 950 && fa_cover_pos(&c) <= p + 1050);   /* 40 秒行程，4 秒＝10% */
+}
+
+TEST(cover_travel_presets_and_labels)
+{
+    CHECK_EQ(fa_cover_travel_preset_ms(0), 5000);
+    CHECK_EQ(fa_cover_travel_preset_ms(55), 60000);
+    CHECK_EQ(fa_cover_travel_preset_ms(56), 65000);
+    CHECK_EQ(fa_cover_travel_preset_ms(67), 120000);
+    CHECK_EQ(fa_cover_travel_preset_ms(68), 150000);
+    CHECK_EQ(fa_cover_travel_preset_ms(69), 180000);
+    CHECK_EQ(fa_cover_travel_preset_ms(70), 0);                    /* 超出範圍 */
+    CHECK_EQ(fa_cover_travel_preset_ms(fa_cover_travel_nearest(FA_COVER_TRAVEL_DEFAULT_MS)), 30000);
+    CHECK_EQ(fa_cover_travel_preset_ms(fa_cover_travel_nearest(62000)), 60000);   /* 62 秒→最接近 60 */
+    CHECK_EQ(fa_cover_travel_preset_ms(fa_cover_travel_nearest(999999)), 180000);
+    char b[12];
+    fa_cover_travel_label(0, b);  CHECK(strcmp(b, "5 秒") == 0);
+    fa_cover_travel_label(69, b); CHECK(strcmp(b, "180 秒") == 0);
+    for (int i = 1; i < FA_COVER_TRAVEL_PRESETS; i++)               /* 嚴格遞增＝標籤不重複 */
+        CHECK(fa_cover_travel_preset_ms(i) > fa_cover_travel_preset_ms(i - 1));
+}
+
+TEST(cover_rgb_motion_and_position)
+{
+    fa_rgb_t c = fa_cover_rgb(FA_COVER_OPENING, 5000, 96);
+    CHECK(c.g == 96 && c.r == 0 && c.b == 0);
+    c = fa_cover_rgb(FA_COVER_CLOSING, 5000, 96);
+    CHECK(c.r == 96 && c.g == 0 && c.b == 0);
+    fa_rgb_t open = fa_cover_rgb(FA_COVER_STOP, 0, 96), shut = fa_cover_rgb(FA_COVER_STOP, FA_COVER_FULL, 96);
+    CHECK(open.r == 96 && open.g == 96 && open.b == 96);
+    CHECK(shut.r > 0 && shut.r < 10 && shut.r == shut.g && shut.g == shut.b);
+    fa_rgb_t half = fa_cover_rgb(FA_COVER_STOP, 5000, 96);
+    CHECK(half.r > shut.r && half.r < open.r);
+}
+
 int main(void)
 {
     RUN(mode_from_dip);
@@ -744,6 +870,13 @@ int main(void)
     RUN(led_wire_byte_order);
     RUN(led_rgb_status_blink_still_visible_when_relays_off);
     RUN(color_hs_primaries_and_white);
+    RUN(cover_moves_proportionally_and_stops_at_target);
+    RUN(cover_end_target_runs_overrun_then_stops);
+    RUN(cover_reverse_waits_dead_time_same_dir_does_not);
+    RUN(cover_stop_freezes_and_restart_after_stop_respects_dead_time);
+    RUN(cover_cycle_button_and_travel_change);
+    RUN(cover_travel_presets_and_labels);
+    RUN(cover_rgb_motion_and_position);
     printf("%d tests, %d failures\n", ul_run, ul_fail);
     return ul_fail ? 1 : 0;
 }

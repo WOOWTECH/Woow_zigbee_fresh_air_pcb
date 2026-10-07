@@ -29,6 +29,9 @@
 #include "fa_relays.h"
 #include "fa_remotes.h"
 #include "fa_net.h"
+#if CONFIG_FA_DEVKIT_COVER_ONLY
+#include "fa_cover.h"
+#endif
 #if CONFIG_FA_DEVKIT_RGB
 #include "ws2812.h"
 #endif
@@ -36,7 +39,7 @@
 static const char *TAG = "fa";
 
 static const gpio_num_t RELAY_PIN[FA_CH] = {PIN_RELAY_1, PIN_RELAY_2, PIN_RELAY_3, PIN_RELAY_4};
-static const gpio_num_t DI_PIN[FA_CH] = {PIN_DI_1, PIN_DI_2, PIN_DI_3, PIN_DI_4};
+static const gpio_num_t DI_PIN[FA_CH] __attribute__((unused)) = {PIN_DI_1, PIN_DI_2, PIN_DI_3, PIN_DI_4};
 
 static fa_relays_t       s_relays;
 static fa_remotes_t      s_remotes;
@@ -323,7 +326,12 @@ static void rf_task(void *arg)
         fa_action_t a[8];
         xSemaphoreTake(s_lock, portMAX_DELAY);
         bool known = fa_remotes_has(&s_remotes, addr);
+#if CONFIG_FA_DEVKIT_COVER_ONLY
+        int n = 0;                                                 /* 窗簾實驗：遙控器先不接（K1、K2 歸窗簾） */
+        (void)known;
+#else
         int n = (known && ch >= 0) ? fa_io_rf(&s_io, &s_relays, (uint8_t)ch, t, a, 8) : 0;
+#endif
         xSemaphoreGive(s_lock);
         post_actions(a, n);
         io_post(n, (uint8_t)ch);
@@ -456,6 +464,82 @@ static fa_led_in_t led_input(uint32_t held)
     };
 }
 
+#if CONFIG_FA_DEVKIT_COVER_ONLY
+/* ---------------- 窗簾實驗（K1＝開、K2＝關）：fa_cover 算位置，這裡接繼電器、NVS、Matter ---------------- */
+static fa_cover_t s_cover;                       /* 由 s_lock 保護 */
+
+static void cover_nvs(bool save, uint16_t *pos, uint32_t *travel)
+{
+    nvs_handle_t h;
+    if (nvs_open("fa", save ? NVS_READWRITE : NVS_READONLY, &h) != ESP_OK) return;
+    if (save) {
+        if (pos) nvs_set_u16(h, "cov_pos", *pos);
+        if (travel) nvs_set_u32(h, "cov_travel", *travel);
+        nvs_commit(h);
+    } else {
+        if (pos) nvs_get_u16(h, "cov_pos", pos);
+        if (travel) nvs_get_u32(h, "cov_travel", travel);
+    }
+    nvs_close(h);
+}
+
+/* 以下三個在 CHIP 執行緒被呼叫：只碰 s_cover，不呼叫 fa_net_* */
+static void net_cover_goto(uint16_t target)
+{
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    fa_cover_goto(&s_cover, target, now_ms());
+    xSemaphoreGive(s_lock);
+}
+
+static uint16_t net_cover_stop(void)
+{
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    fa_cover_stop(&s_cover, now_ms());
+    uint16_t p = fa_cover_pos(&s_cover);
+    xSemaphoreGive(s_lock);
+    return p;
+}
+
+static void net_cover_travel(uint32_t ms)
+{
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    fa_cover_set_travel(&s_cover, ms, now_ms());
+    xSemaphoreGive(s_lock);
+    cover_nvs(true, NULL, &ms);
+    ESP_LOGI(TAG, "窗簾行程時間改成 %lu 秒", (unsigned long)(ms / 1000));
+}
+
+/* 每 10ms：推進窗簾、切繼電器、回報 Matter（每 2% 或狀態改變）；停下時存位置 */
+static void cover_step(uint32_t t)
+{
+    static fa_cover_motor_t last_m = FA_COVER_STOP;
+    static int32_t last_pos = -1, last_tgt = -1;
+    static bool was_busy;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    fa_cover_motor_t m = fa_cover_tick(&s_cover, t);
+    uint16_t pos = fa_cover_pos(&s_cover);
+    bool busy = fa_cover_busy(&s_cover);
+    uint16_t tgt = busy ? (uint16_t)s_cover.target : pos;
+    xSemaphoreGive(s_lock);
+    if (m != last_m) {                                         /* 先關另一顆再開這顆；fa_cover 已保證反向前停 500ms */
+        if (m != FA_COVER_OPENING) relay_set(0, false);
+        if (m != FA_COVER_CLOSING) relay_set(1, false);
+        if (m == FA_COVER_OPENING) relay_set(0, true);
+        if (m == FA_COVER_CLOSING) relay_set(1, true);
+        static const char *const NAME[] = {"停", "開（K1）", "關（K2）"};
+        ESP_LOGI(TAG, "窗簾：%s，位置 %u.%02u%%", NAME[m], pos / 100, pos % 100);
+        last_m = m;
+    }
+    if (tgt != last_tgt || (pos > last_pos ? pos - last_pos : last_pos - pos) >= 200 || (!busy && pos != last_pos)) {
+        fa_net_report_cover(pos, tgt);
+        last_pos = pos;
+        last_tgt = tgt;
+    }
+    if (was_busy && !busy) cover_nvs(true, &pos, NULL);
+    was_busy = busy;
+}
+#endif
+
 static void ui_task(void *arg)
 {
     fa_button_t btn;
@@ -464,7 +548,13 @@ static void ui_task(void *arg)
         uint32_t t = now_ms();
         switch (fa_button_update(&btn, gpio_get_level(PIN_BUTTON) == 0, t)) {
         case FA_BTN_SHORT:
+#if CONFIG_FA_DEVKIT_COVER_ONLY
+            xSemaphoreTake(s_lock, portMAX_DELAY);             /* 窗簾：開→停→關→停 循環 */
+            fa_cover_cycle(&s_cover, t);
+            xSemaphoreGive(s_lock);
+#else
             apply(fa_relays_cycle);
+#endif
             break;
         case FA_BTN_LONG:
             s_learn_until_us = esp_timer_get_time() + 20 * 1000000LL;
@@ -476,6 +566,9 @@ static void ui_task(void *arg)
         default:
             break;
         }
+#if CONFIG_FA_DEVKIT_COVER_ONLY
+        cover_step(t);                                             /* 窗簾實驗：DI／遙控器不接繼電器（K1、K2 歸窗簾） */
+#else
         for (uint8_t k = 0; k < FA_CH; k++) {                     /* 接線 DI：每 10ms 取樣，fa_io 內部防彈跳 */
             fa_action_t a[8];
             bool closed = gpio_get_level(DI_PIN[k]) == 0;
@@ -500,6 +593,7 @@ static void ui_task(void *arg)
             xSemaphoreGive(s_lock);
             if (mask != last_di) { last_di = mask; fa_net_report_di(mask); }
         }
+#endif
         fa_led_in_t led = led_input(fa_button_held_ms(&btn, t));
         gpio_set_level(PIN_LED, fa_led_level(&led, t));
 #if CONFIG_FA_DEVKIT_RGB
@@ -509,12 +603,29 @@ static void ui_task(void *arg)
             memcpy(on, s_relays.on, sizeof on);
             xSemaphoreGive(s_lock);
             uint32_t l = s_light_rgb;
+#if CONFIG_FA_DEVKIT_COVER_ONLY
+            bool special = led.held_ms >= FA_BTN_LONG_MIN || led.learning || led.identifying || led.net != FA_LED_NET_ONLINE;
+            if (special) {                                         /* 異常狀態（未配對、斷線…）照常閃白燈 */
+                bool none[FA_CH] = {0};
+                fa_rgb_t c = fa_led_rgb(fa_led_level(&led, t), none);
+                ws2812_set(c.r, c.g, c.b);
+            } else {                                               /* 開中綠、關中紅、停著白光亮度＝開度 */
+                xSemaphoreTake(s_lock, portMAX_DELAY);
+                fa_cover_motor_t m = s_cover.motor;
+                uint16_t pos = fa_cover_pos(&s_cover);
+                xSemaphoreGive(s_lock);
+                fa_rgb_t c = fa_cover_rgb(m, pos, 96);
+                ws2812_set(c.r, c.g, c.b);
+            }
+            (void)on; (void)l;
+#else
             if (l >> 24)                                           /* controller 開了彩色燈：顯示它設的顏色 */
                 ws2812_set((uint8_t)(l >> 16), (uint8_t)(l >> 8), (uint8_t)l);
             else {                                                 /* 關著：K1–K4 顏色或狀態閃燈；正常且全關時全暗 */
                 fa_rgb_t c = fa_led_rgb(fa_led_rgb_status_lit(&led, t, on), on);
                 ws2812_set(c.r, c.g, c.b);
             }
+#endif
         }
 #endif
         vTaskDelay(pdMS_TO_TICKS(10));
@@ -585,10 +696,23 @@ void app_main(void)
     fa_nfc_port_start(PIN_NFC_SDA, PIN_NFC_SCL, &nfc_cb);
 #endif
     {
+#if CONFIG_FA_DEVKIT_COVER_ONLY
+        uint16_t cpos = FA_COVER_FULL;                             /* 沒存過：當作全關 */
+        uint32_t ctravel = FA_COVER_TRAVEL_DEFAULT_MS;
+        cover_nvs(false, &cpos, &ctravel);
+        xSemaphoreTake(s_lock, portMAX_DELAY);
+        fa_cover_init(&s_cover, ctravel, cpos);
+        xSemaphoreGive(s_lock);
+        fa_net_cover_init(cpos, ctravel);
+#endif
         static const fa_net_cb_t net_cb = {.on_set = net_on_set, .on_cfg = net_on_cfg,
                                               .identify = net_identify,
 #if CONFIG_FA_DEVKIT_RGB
                                               .light = net_light,
+#endif
+#if CONFIG_FA_DEVKIT_COVER_ONLY
+                                              .cover_goto = net_cover_goto, .cover_stop = net_cover_stop,
+                                              .cover_travel = net_cover_travel,
 #endif
         };
         xSemaphoreTake(s_lock, portMAX_DELAY);

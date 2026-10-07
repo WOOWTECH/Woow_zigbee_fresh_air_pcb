@@ -28,6 +28,15 @@ menu "WO30109 新風控制器"
             測試第三方生態系（例如塗鴉）遇到「單純一顆 Matter 彩色燈」時給什麼面板，
             用來判斷改裝置結構有沒有用。繼電器、DI 本地功能照常，只是不出現在 Matter。
 
+    config FA_DEVKIT_COVER_ONLY
+        bool "實驗：整台裝置只有窗簾（K1＝開、K2＝關，時間式比例控制）"
+        depends on FA_DEVKIT_RGB && !FA_DEVKIT_LIGHT_ONLY
+        default n
+        help
+            Matter 只建 Window Covering（Drapery，可設百分比）＋「窗簾行程時間」下拉選單（5–180 秒）。
+            位置由行程時間推算（fa_core/fa_cover），停下時存 NVS；換方向先停 500ms；到端點多跑行程的 1/10。
+            BOOT 短按＝開／停／關循環；板載 RGB：開中綠、關中紅、停著白光亮度＝開度。DI 與遙控器不接繼電器。
+
     choice FA_DEVKIT_RGB_ORDER
         prompt "板載 RGB 燈的位元組順序"
         depends on FA_DEVKIT_RGB

@@ -41,5 +41,8 @@ firmware/sdkconfig.thread_devkit.old
 firmware/build_lightonly/
 firmware/sdkconfig.lightonly
 firmware/sdkconfig.lightonly.old
+firmware/build_coveronly/
+firmware/sdkconfig.coveronly
+firmware/sdkconfig.coveronly.old
 firmware/managed_components/
 firmware/test/test_core
