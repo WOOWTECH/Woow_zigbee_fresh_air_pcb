@@ -22,6 +22,7 @@ typedef struct {
     void (*cover_goto)(uint16_t target);
     uint16_t (*cover_stop)(void);                  /* 回傳停下的位置 */
     void (*cover_travel)(uint32_t travel_ms);      /* HA 下拉選單改了行程時間 */
+    void (*cover_reverse)(bool reversed);          /* Window Covering Mode.MotorDirectionReversed（馬達方向反轉：K1／K2 對調） */
 } fa_net_cb_t;
 
 void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg);

@@ -467,6 +467,7 @@ static fa_led_in_t led_input(uint32_t held)
 #if CONFIG_FA_DEVKIT_COVER_ONLY
 /* ---------------- 窗簾實驗（K1＝開、K2＝關）：fa_cover 算位置，這裡接繼電器、NVS、Matter ---------------- */
 static fa_cover_t s_cover;                       /* 由 s_lock 保護 */
+static volatile bool s_cover_reversed;           /* 馬達方向反轉：K1／K2 對調（Matter Mode.MotorDirectionReversed） */
 
 static void cover_nvs(bool save, uint16_t *pos, uint32_t *travel)
 {
@@ -500,6 +501,14 @@ static uint16_t net_cover_stop(void)
     return p;
 }
 
+static void net_cover_reverse(bool reversed)
+{
+    s_cover_reversed = reversed;                 /* cover_step 下次切繼電器時生效；正在跑的話先停，避免反向突然對調 */
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    if (fa_cover_busy(&s_cover)) fa_cover_stop(&s_cover, now_ms());
+    xSemaphoreGive(s_lock);
+}
+
 static void net_cover_travel(uint32_t ms)
 {
     xSemaphoreTake(s_lock, portMAX_DELAY);
@@ -522,12 +531,14 @@ static void cover_step(uint32_t t)
     uint16_t tgt = busy ? (uint16_t)s_cover.target : pos;
     xSemaphoreGive(s_lock);
     if (m != last_m) {                                         /* 先關另一顆再開這顆；fa_cover 已保證反向前停 500ms */
-        if (m != FA_COVER_OPENING) relay_set(0, false);
-        if (m != FA_COVER_CLOSING) relay_set(1, false);
-        if (m == FA_COVER_OPENING) relay_set(0, true);
-        if (m == FA_COVER_CLOSING) relay_set(1, true);
-        static const char *const NAME[] = {"停", "開（K1）", "關（K2）"};
-        ESP_LOGI(TAG, "窗簾：%s，位置 %u.%02u%%", NAME[m], pos / 100, pos % 100);
+        uint8_t k_open = s_cover_reversed ? 1 : 0, k_close = s_cover_reversed ? 0 : 1;
+        if (m != FA_COVER_OPENING) relay_set(k_open, false);
+        if (m != FA_COVER_CLOSING) relay_set(k_close, false);
+        if (m == FA_COVER_OPENING) relay_set(k_open, true);
+        if (m == FA_COVER_CLOSING) relay_set(k_close, true);
+        static const char *const NAME[] = {"停", "開", "關"};
+        ESP_LOGI(TAG, "窗簾：%s（K%d），位置 %u.%02u%%", NAME[m], m == FA_COVER_CLOSING ? k_close + 1 : k_open + 1,
+                 pos / 100, pos % 100);
         last_m = m;
     }
     /* 到目標（含端點 overrun 開始時）立刻回報，不必等 2% 門檻或 overrun 跑完 */
@@ -717,7 +728,7 @@ void app_main(void)
 #endif
 #if CONFIG_FA_DEVKIT_COVER_ONLY
                                               .cover_goto = net_cover_goto, .cover_stop = net_cover_stop,
-                                              .cover_travel = net_cover_travel,
+                                              .cover_travel = net_cover_travel, .cover_reverse = net_cover_reverse,
 #endif
         };
         xSemaphoreTake(s_lock, portMAX_DELAY);

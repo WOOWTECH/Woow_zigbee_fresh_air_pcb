@@ -5,7 +5,8 @@
  *   EP5–8   Contact Sensor        DI1–DI4（Boolean State.StateValue：接通＝true）
  *   EP9–20  Mode Select ×12       每路 DI 模式／DO 模式／點動時間（HA 顯示成下拉選單；選項見 fa_modes）
  *   EP21    Extended Color Light  只在 CONFIG_FA_DEVKIT_LIGHT（預設關）：板載 RGB 燈，讓 controller 能測燈
- *   實驗 CONFIG_FA_DEVKIT_COVER_ONLY：只建 Window Covering（Drapery，Lift＋位置感知）＋「窗簾行程時間」下拉選單
+ *   實驗 CONFIG_FA_DEVKIT_COVER_ONLY：只建一個 Window Covering endpoint（Drapery，Lift＋位置感知），
+ *   「窗簾行程時間」下拉選單是同一個 endpoint 上的 Mode Select cluster
  *   EP1–8 另帶 Fixed Label {ha_entitylabel: K1…K4／DI1…DI4}：HA 用它取代 entity 名稱裡的 endpoint 號碼
  *   （只對 HA 白名單內的 VID/PID 有效，測試 VID 0xFFF1/PID 0x8000 在內；docs/v4-matter-research.md §1）。
  * Endpoint 號碼依建立順序自動分配，實際值記在 s_ep_*（開機 log 會印）。
@@ -264,6 +265,13 @@ static esp_err_t on_attr(attribute::callback_type_t type, uint16_t ep, uint32_t 
 #if CONFIG_FA_DEVKIT_LIGHT
     if (type == attribute::POST_UPDATE && ep == s_ep_light && s_ep_light) { refresh_light(); return ESP_OK; }
 #endif
+    if (type == attribute::POST_UPDATE && ep && ep == s_ep_cover && cluster == WindowCovering::Id &&
+        attr == WindowCovering::Attributes::Mode::Id) {
+        bool rev = val->val.u8 & chip::to_underlying(WindowCovering::Mode::kMotorDirectionReversed);
+        ESP_LOGI(TAG, "窗簾：馬達方向%s", rev ? "反轉（K1＝關、K2＝開）" : "正常（K1＝開、K2＝關）");
+        if (s_cb.cover_reverse) s_cb.cover_reverse(rev);
+        return ESP_OK;
+    }
     if (type != attribute::PRE_UPDATE || s_local) return ESP_OK;
     if (cluster == OnOff::Id && attr == OnOff::Attributes::OnOff::Id) {
         int ch = find_plug(ep);
@@ -508,22 +516,36 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
                                           cluster::window_covering::feature::position_aware_lift::get_id();
         c.window_covering.features.position_aware_lift.current_position_lift_percent_100ths = s_cover_pos;
         c.window_covering.features.position_aware_lift.target_position_lift_percent_100ths = s_cover_pos;
+        c.window_covering.config_status = chip::to_underlying(WindowCovering::ConfigStatus::kOperational);   /* 沒有這個 HA 顯示「設定狀態：問題」 */
         c.window_covering.delegate = &s_cover_delegate;
         endpoint_t *ep = window_covering::create(node, &c, ENDPOINT_FLAG_NONE, nullptr);
         s_ep_cover = ep ? endpoint::get_id(ep) : 0;
-        if (ep) s_cover_delegate.SetEndpoint(s_ep_cover);
+        if (ep) {
+            s_cover_delegate.SetEndpoint(s_ep_cover);
+            /* ConfigStatus／Mode 都存 NVS：開機時以存著的 Mode 為準重算 ConfigStatus（舊韌體存的值缺 Operational），
+             * 並把馬達方向交給 app */
+            cluster_t *wc = cluster::get(ep, WindowCovering::Id);
+            esp_matter_attr_val_t mv = esp_matter_invalid(nullptr);
+            attribute::get_val(attribute::get(wc, WindowCovering::Attributes::Mode::Id), &mv);
+            bool rev = mv.val.u8 & chip::to_underlying(WindowCovering::Mode::kMotorDirectionReversed);
+            uint8_t cs = chip::to_underlying(WindowCovering::ConfigStatus::kOperational) |
+                         chip::to_underlying(WindowCovering::ConfigStatus::kLiftPositionAware) |
+                         (rev ? chip::to_underlying(WindowCovering::ConfigStatus::kLiftMovementReversed) : 0);
+            esp_matter_attr_val_t cv = esp_matter_bitmap8(cs);
+            attribute::set_val(attribute::get(wc, WindowCovering::Attributes::ConfigStatus::Id), &cv);
+            if (s_cb.cover_reverse) s_cb.cover_reverse(rev);
+            /* 行程時間選單掛在同一個 endpoint 的 Mode Select cluster，不另開 endpoint：
+             * 塗鴉看到的是「單一窗簾」（多一個 endpoint 會被當多功能裝置、只給通用面板）；HA 照樣建下拉選單 */
+            s_modes.initTravel();
+            cluster::mode_select::config_t ms;
+            snprintf(ms.description, sizeof ms.description, "窗簾行程時間");
+            ms.current_mode = fa_cover_travel_nearest(s_cover_travel_ms);
+            ms.delegate = &s_modes;
+            if (cluster::mode_select::create(ep, &ms, CLUSTER_FLAG_SERVER)) s_ep_travel = s_ep_cover;
+        }
     }
-    {
-        s_modes.initTravel();
-        mode_select::config_t c;
-        snprintf(c.mode_select.description, sizeof c.mode_select.description, "窗簾行程時間");
-        c.mode_select.current_mode = fa_cover_travel_nearest(s_cover_travel_ms);
-        c.mode_select.delegate = &s_modes;
-        endpoint_t *ep = mode_select::create(node, &c, ENDPOINT_FLAG_NONE, nullptr);
-        s_ep_travel = ep ? endpoint::get_id(ep) : 0;
-    }
-    ESP_LOGW(TAG, "實驗模式：只有窗簾（endpoint %u）＋行程時間選單（endpoint %u）；開機位置 %u.%02u%%、行程 %lu ms",
-             s_ep_cover, s_ep_travel, s_cover_pos / 100, s_cover_pos % 100, (unsigned long)s_cover_travel_ms);
+    ESP_LOGW(TAG, "實驗模式：只有窗簾（endpoint %u，行程時間選單同一個 endpoint：%s）；開機位置 %u.%02u%%、行程 %lu ms",
+             s_ep_cover, s_ep_travel ? "有" : "建立失敗", s_cover_pos / 100, s_cover_pos % 100, (unsigned long)s_cover_travel_ms);
 #endif
     int failed = 0;
 #if CONFIG_FA_DEVKIT_COVER_ONLY
