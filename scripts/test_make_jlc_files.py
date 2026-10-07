@@ -9,7 +9,7 @@
 import json, os, sys, unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from make_jlc_files import FOOTPRINTS, solve_rotation  # noqa: E402
+from make_jlc_files import FOOTPRINTS, solve_rotation, solve_rotation_by_body  # noqa: E402
 
 JLC = json.load(open(FOOTPRINTS))
 # BOM 已經不用、但測試仍要的料號（快取會隨 BOM 刪掉）：焊盤座標直接寫在這裡，測試不依賴目前 BOM
@@ -67,6 +67,51 @@ class SolveRotation(unittest.TestCase):
 
     def test_too_few_common_pads(self):
         self.assertEqual(solve_rotation({"1": [(0, 0)]}, {"1": [[0, 0]]}, False)[0], [])
+
+
+class SolveRotationByBody(unittest.TestCase):
+    """插拔式端子這類「焊盤一排、等距」的料：焊盤怎麼轉都對得上，編號只是標籤，真正決定能不能用的是開口朝哪邊。
+    2026-10-07 發現：V3.4 的 J5 依編號算出 0°，但 JLC 封裝的本體在 +Y、板上要朝 −Y（板邊），0° 會讓開口朝板內。
+    本體方向：板上用 courtyard 外框、JLC 用絲印外框，各自相對焊盤中心的偏移。"""
+
+    ROW7 = {str(n): [[-7.62 + 2.54 * (n - 1), 0.0]] for n in range(1, 8)}     # JLC KF2EDGR-2.54-7P：Pin1 在 −X
+    JLC_BODY = (-9.9, 9.9, -1.3, 9.1)                                          # 絲印：本體往 +Y
+
+    def board(self, x0, y0, step, body):
+        pads = {str(n): [(x0 + step * (n - 1), y0)] for n in range(1, 8)}
+        return pads, body
+
+    def test_j5_body_toward_board_edge_needs_180(self):
+        # 板上 J5：Pin1 在 −X（102.48）、本體往 −Y（開口朝上緣 y=100）
+        pads, body = self.board(102.48, 106.9, 2.54, (100.31, 119.89, 100.0, 108.1))
+        self.assertEqual(solve_rotation_by_body(pads, body, self.ROW7, self.JLC_BODY, False), [180])
+
+    def test_reversed_numbering_same_body_direction_is_0(self):
+        # P3 的情況：板上 Pin1 在 +X（編號反向）、本體同樣往 +Y → 0°（編號照規則會算 180°，開口會朝板內）
+        pads, body = self.board(117.78, 175.0, -2.54, (98.0, 122.0, 172.6, 183.0))
+        self.assertEqual(solve_rotation_by_body(pads, body, self.ROW7, self.JLC_BODY, False), [0])
+
+    def test_not_applicable_without_body_offset(self):
+        # 本體置中（電阻、保險絲）：不能用本體判斷 → 空清單，交回編號比對
+        pads = {"1": [(0.0, 0.0)], "2": [(5.08, 0.0)]}
+        self.assertEqual(solve_rotation_by_body(pads, (-2.0, 7.0, -4.2, 4.2), {"1": [[-2.54, 0]], "2": [[2.54, 0]]},
+                                                (-4.2, 4.3, -4.2, 4.2), False), [])
+
+    def test_not_applicable_when_pad_pattern_is_asymmetric(self):
+        # SOT-23 這類焊盤不對稱的料：編號比對本來就唯一，不歸這裡管
+        pads = {"1": [(0.0, 0.0)], "2": [(0.0, 1.9)], "3": [(1.9, 0.95)]}
+        jlc = {"1": [[-0.95, 0.95]], "2": [[0.95, 0.95]], "3": [[0.0, -0.95]]}
+        self.assertEqual(solve_rotation_by_body(pads, (-1.0, 3.0, -1.0, 3.0), jlc, (-1.5, 1.5, -1.5, 1.5), False), [])
+
+    def test_vertical_body_offset_on_rotated_footprint(self):
+        # 板上整排轉 90°（直排、本體往 +X），JLC 本體往 +Y → 270°（KiCad 角度定義，見 _rot）
+        pads = {str(n): [(10.0, 20.0 + 2.54 * (n - 1))] for n in range(1, 8)}
+        body = (8.7, 19.1, 17.72, 37.52)                 # 腳後 1.3、前 9.1；Y 跟焊盤排同中心
+        hits = solve_rotation_by_body(pads, body, self.ROW7, self.JLC_BODY, False)
+        self.assertEqual(len(hits), 1)
+        from make_jlc_files import _rot
+        v = _rot((0.0, 1.0), hits[0])                  # JLC 本體方向（+Y）轉過去之後要指向 +X
+        self.assertGreater(v[0], 0.9)
 
 
 if __name__ == "__main__":

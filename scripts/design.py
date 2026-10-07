@@ -30,10 +30,13 @@ def build(version="2.0"):
 
     # ---------------- 市電輸入 ----------------
     if v2:
-        add("P1", "Connector_Generic:Conn_01x02", "AC IN 230V", "WOOW:TerminalBlock_Pluggable_1x02_P5.00mm_Horizontal", "",
-            {"1": "AC_L_IN", "2": "AC_N"})
-        add("F1", "Device:Fuse", "T3.15A 250V", "Fuse:Fuseholder_TR5_Littelfuse_No560_No460", "",
-            {"1": "AC_L_IN", "2": "AC_L"})
+        # V3.4：P1／F1／P3 改 JLC 代焊（使用者 10/07：「要 JLC 那邊都處理完」）。P1 KEFA KF2EDGR-5.0-2P（C441193，
+        # 規格書建議孔 Ø1.6）；F1 Littelfuse 372 系列 TR5 保險絲 T3.15A（C178794）直接焊在 TR5 封裝（腳距 5.08、孔 Ø1.0），
+        # 不用保險絲座：座子 JLC 能焊，但保險絲插進座子要人工
+        add("P1", "Connector_Generic:Conn_01x02", "AC IN 230V", "WOOW:TerminalBlock_Pluggable_1x02_P5.00mm_Horizontal",
+            "C441193" if v34 else "", {"1": "AC_L_IN", "2": "AC_N"})
+        add("F1", "Device:Fuse", "T3.15A 250V TR5" if v34 else "T3.15A 250V", "Fuse:Fuseholder_TR5_Littelfuse_No560_No460",
+            "C178794" if v34 else "", {"1": "AC_L_IN", "2": "AC_L"})
         add("RV1", "Device:Varistor", "07D471K", "Varistor:RV_Disc_D7mm_W3.4mm_P5mm", "C28756",
             {"1": "AC_L", "2": "AC_N"})
         add("U2", "Converter_ACDC:IRM-02-12", "IRM-02-12", "Converter_ACDC:Converter_ACDC_MeanWell_IRM-02-xx_THT", "C7211213",
@@ -224,7 +227,8 @@ def build(version="2.0"):
             add(f"D{k}", "Diode:1N4148W", "1N4148W", "Diode_SMD:D_SOD-123", "C81598", {"1": "+12V", "2": f"COIL{k}"})
         add(f"K{k}", "Relay:G5Q-1", "G5Q-1 DC12", "WOOW:Relay_SPDT_Omron-G5Q-1_Tight", "C397244",
             {"1": "+12V", "5": f"COIL{k}", "2": "DO_COM", "3": f"DO_{k}_NO", "4": nc[k]})
-    add("P3", "Connector_Generic:Conn_01x08", "AC OUT", "WOOW:TerminalBlock_Pluggable_1x08_P5.08mm_Horizontal", "",
+    # V3.4：KEFA KF2EDGR-5.08-8P（C441210，規格書建議孔 Ø1.6），JLC 代焊
+    add("P3", "Connector_Generic:Conn_01x08", "AC OUT", "WOOW:TerminalBlock_Pluggable_1x08_P5.08mm_Horizontal", "C441210" if v34 else "",
         {"1": "AC_L", "2": "DO_COM", "3": "DO_4_NC", "4": "DO_4_NO", "5": "DO_3_NC", "6": "DO_3_NO",
          "7": "DO_2_NO", "8": "DO_1_NO"})
     # ---------------- 固定孔（M3，非金屬化；位置照原板）----------------

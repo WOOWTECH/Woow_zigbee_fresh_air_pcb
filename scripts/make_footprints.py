@@ -29,11 +29,11 @@ fp('Tuya_ZS3L','Tuya ZS3L Zigbee module 24x16mm, pads measured from WO_30109 V1.
 pads=[pad_th(1,5,0,1.5,0.9,'rect')]+[pad_th(n,5-2*(n-1),0,1.5,0.9) for n in range(2,7)]  # 原板 +13.5mm 的 Ø3.2 孔其實是板子固定孔，另以 H2 放置
 fp('Ebelong_EPA09-4D','Ebelong EPA09-4D 433MHz receiver, 6 pins P2.0mm; module end shares the board M3 hole at +13.5mm (H3); body outline UNVERIFIED',(-7,-10,9.8,2),(-7.3,-10.3,10.0,2.3),'through_hole',pads)
 # 插拔式端子座 2P 5.00mm（開口朝 -Y = 板邊）
-pads=[pad_th(1,2.5,0,2.5,1.5,'rect'),pad_th(2,-2.5,0,2.5,1.5)]
-fp('TerminalBlock_Pluggable_1x02_P5.00mm_Horizontal','Pluggable terminal header 2P 5.00mm right-angle (e.g. 2EDGRC-5.0-02P), holes 1.5mm',(-5.1,-8.1,5.1,2.2),(-5.4,-8.4,5.4,2.5),'through_hole',pads)
+pads=[pad_th(1,2.5,0,2.5,1.6,'rect'),pad_th(2,-2.5,0,2.5,1.6)]   # V3.4：KF2EDGR-5.0 規格書建議孔 Ø1.6（原 1.5）
+fp('TerminalBlock_Pluggable_1x02_P5.00mm_Horizontal','Pluggable terminal header 2P 5.00mm right-angle (KEFA KF2EDGR-5.0-2P, JLC C441193), holes 1.6mm',(-5.1,-8.1,5.1,2.2),(-5.4,-8.4,5.4,2.5),'through_hole',pads)
 # 插拔式端子座 8P 5.08mm（開口朝 +Y = 板邊）；Pin1 在 +X（原板 AC_L）
-pads=[pad_th(1,17.78,0,2.3,1.5,'rect')]+[pad_th(n,17.78-5.08*(n-1),0,2.3,1.5) for n in range(2,9)]
-fp('TerminalBlock_Pluggable_1x08_P5.08mm_Horizontal','Pluggable terminal header 8P 5.08mm right-angle (e.g. 15EDGRC-5.08-08P), holes 1.5mm',(-20.4,-2.4,20.4,7.9),(-20.7,-2.7,20.7,8.2),'through_hole',pads)
+pads=[pad_th(1,17.78,0,2.3,1.6,'rect')]+[pad_th(n,17.78-5.08*(n-1),0,2.3,1.6) for n in range(2,9)]   # V3.4：KF2EDGR-5.08 建議孔 Ø1.6
+fp('TerminalBlock_Pluggable_1x08_P5.08mm_Horizontal','Pluggable terminal header 8P 5.08mm right-angle (KEFA KF2EDGR-5.08-8P, JLC C441210), holes 1.6mm',(-20.4,-2.4,20.4,7.9),(-20.7,-2.7,20.7,8.2),'through_hole',pads)
 # 插拔式端子座 7P 3.50mm（V3.2 DI 輸入，開口朝 -Y = 板邊）；Pin1（+12V）在 -X。
 # 外形取 3.5mm 直角插拔座常見尺寸（如 KF2EDGR-3.5-07P／15EDGRC-3.5-07P：孔 1.2、深約 7mm），下單前要對實際料號核對
 pads=[pad_th(1,-10.5,0,2.0,1.2,'rect')]+[pad_th(n,-10.5+3.5*(n-1),0,2.0,1.2) for n in range(2,8)]

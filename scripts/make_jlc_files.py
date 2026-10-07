@@ -7,6 +7,8 @@ CPL 的角度要換成 JLC 的零度方向，否則貼片會轉錯。
   * 角度優先用「JLC 實際用的封裝」算：jlc_footprints.json 存了每個 LCSC 料號在 EasyEDA 庫裡的焊盤座標，
     依焊盤編號試 0/90/180/270，找讓它們落在 KiCad 板上焊盤的角度（容差 0.35mm）。
     正面：板上 = R(θ)·E；背面：板上 = MirrorX·R(θ)·E（2026-10-05 在 JLC 3D 檢視器用 D1、Q1、U4 實測確認）。
+  * 焊盤一排等距的料（插拔式端子）：焊盤怎麼轉都對得上，改用本體方向判斷（板上 courtyard 對 JLC 絲印外框，
+    solve_rotation_by_body）。2026-10-07 發現 V3.4 的 J5 依編號給 0°，開口會朝板內。
   * 算不出唯一答案（對稱件、焊盤編號對不上、快取裡沒有）才退回 kicad-jlcpcb-tools（Bouni）外掛的做法：
     背面先 (180 - θ) % 360，再加 matthewlai/JLCKicadTools cpl_rotations_db.csv 的修正
     （正規表示式，依序比對 位號、值、封裝名，取匹配最長的一條），偏移依角度旋轉後加上去。
@@ -75,6 +77,48 @@ def solve_rotation(board_pads, jlc_pads, bottom):
     return hits, best
 
 
+BODY_MIN_OFFSET = 1.0                                   # mm，本體中心偏離焊盤中心多少才算「有方向」
+
+
+def solve_rotation_by_body(board_pads, board_body, jlc_pads, jlc_body, bottom):
+    """焊盤一排等距這類料（插拔式端子、排針座）：焊盤怎麼轉都對得上、編號只是標籤，要看本體（開口）朝哪邊。
+    board_body＝板上 courtyard 外框、jlc_body＝JLC 封裝絲印外框，都是 (xmin, xmax, ymin, ymax)。
+    回傳「焊盤位置（不看編號）對得上、而且本體方向一致」的角度清單；
+    不適用時回傳空清單：焊盤圖樣轉 180° 不對稱（編號比對已經唯一），或本體沒有明顯偏向一邊。"""
+    bp = [q for v in board_pads.values() for q in v]
+    jp = [tuple(q) for v in jlc_pads.values() for q in v]
+    if len(bp) < 2 or len(bp) != len(jp):
+        return []
+    def centre(pts):
+        xs = [q[0] for q in pts]; ys = [q[1] for q in pts]
+        return ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2)
+    cb, cj = centre(bp), centre(jp)
+    def tf(v, t):
+        e = _rot(v, t)
+        return (-e[0], e[1]) if bottom else e
+    def pads_fit(t):
+        rel = [(q[0] - cb[0], q[1] - cb[1]) for q in bp]
+        for q in jp:
+            e = tf((q[0] - cj[0], q[1] - cj[1]), t)
+            if min(math.hypot(e[0] - r[0], e[1] - r[1]) for r in rel) > TOLERANCE:
+                return False
+        return True
+    fits = [t for t in (0, 90, 180, 270) if pads_fit(t)]
+    if not any((t + 180) % 360 in fits for t in fits):    # 轉 180° 不重合 → 不是對稱排，交回編號比對
+        return []
+    vb = ((board_body[0] + board_body[1]) / 2 - cb[0], (board_body[2] + board_body[3]) / 2 - cb[1])
+    vj = ((jlc_body[0] + jlc_body[1]) / 2 - cj[0], (jlc_body[2] + jlc_body[3]) / 2 - cj[1])
+    nb, nj = math.hypot(*vb), math.hypot(*vj)
+    if nb < BODY_MIN_OFFSET or nj < BODY_MIN_OFFSET:
+        return []
+    hits = []
+    for t in fits:
+        e = tf(vj, t)
+        if (e[0] * vb[0] + e[1] * vb[1]) / (nb * nj) > 0.9:     # 方向一致（夾角 < 約 25°）
+            hits.append(t)
+    return hits
+
+
 def load_footprints():
     return json.load(open(FOOTPRINTS)) if os.path.exists(FOOTPRINTS) else {}
 
@@ -97,7 +141,11 @@ def refresh_footprints(lcsc_codes, force=False):
         pads = {}
         for m in re.finditer(r'\(pad\s+"?(\w+)"?\s+(?:smd|thru_hole)\s+\w+\s+\(at ([-\d.]+) ([-\d.]+)', text):
             pads.setdefault(m.group(1), []).append([float(m.group(2)), float(m.group(3))])
+        silk = [(float(x), float(y)) for blk in re.findall(r'\((?:fp_line|fp_arc|fp_circle|fp_rect)\b.*?\)\s*\)\s*\)', text, re.S)
+                if "F.SilkS" in blk for x, y in re.findall(r'\((?:start|end|mid|center) ([-\d.]+) ([-\d.]+)\)', blk)]
         db[code] = {"footprint": os.path.basename(files[0])[:-len(".kicad_mod")], "pads": pads}
+        if silk:                                        # 本體外框：插拔式端子這類料用它判斷開口方向
+            db[code]["silk"] = [min(q[0] for q in silk), max(q[0] for q in silk), min(q[1] for q in silk), max(q[1] for q in silk)]
         print(f"  {code}：{db[code]['footprint']}（{len(pads)} 個焊盤編號）")
         shutil.rmtree(tmp)
     json.dump(db, open(FOOTPRINTS, "w"), indent=1, ensure_ascii=False, sort_keys=True)
@@ -175,7 +223,19 @@ def bom_and_cpl(rules, footprints):
             q = p.GetPosition()
             board_pads.setdefault(p.GetNumber(), []).append((pcbnew.ToMM(q.x), pcbnew.ToMM(q.y)))
         hits, err = solve_rotation(board_pads, footprints[lcsc]["pads"], bottom) if lcsc in footprints else ([], None)
-        if len(hits) == 1:                              # JLC 封裝算出唯一解：以它為準
+        by_body = []
+        if lcsc in footprints and "silk" in footprints[lcsc]:
+            try:
+                cy = fp.GetCourtyard(pcbnew.B_CrtYd if bottom else pcbnew.F_CrtYd).BBox()
+                body = (pcbnew.ToMM(cy.GetLeft()), pcbnew.ToMM(cy.GetRight()), pcbnew.ToMM(cy.GetTop()), pcbnew.ToMM(cy.GetBottom()))
+                by_body = solve_rotation_by_body(board_pads, body, footprints[lcsc]["pads"], footprints[lcsc]["silk"], bottom)
+            except Exception:
+                by_body = []
+        if len(by_body) == 1:                           # 對稱排的端子：依本體（開口）方向，編號只是標籤
+            rot, how = by_body[0], f"JLC 封裝 {footprints[lcsc]['footprint']}，依本體方向（開口）"
+            if len(hits) == 1 and hits[0] != rot:
+                how += f"（依焊盤編號會給 {hits[0]}°，開口會朝反方向，已改正）"
+        elif len(hits) == 1:                            # JLC 封裝算出唯一解：以它為準
             rot, how = hits[0], f"JLC 封裝 {footprints[lcsc]['footprint']}"
             if rule_rot % 360 != rot:
                 how += f"（規則表會給 {rule_rot % 360:.0f}°，已改正）"

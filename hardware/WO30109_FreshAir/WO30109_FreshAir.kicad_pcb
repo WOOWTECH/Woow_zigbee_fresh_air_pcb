@@ -711,7 +711,7 @@
 				)
 			)
 		)
-		(property "Value" "T3.15A 250V"
+		(property "Value" "T3.15A 250V TR5"
 			(at 2.39 7.43 0)
 			(layer "F.Fab")
 			(uuid "7573fd7f-ccc1-4997-a546-a3dd44d9e009")
@@ -748,7 +748,7 @@
 				)
 			)
 		)
-		(property "LCSC" ""
+		(property "LCSC" "C178794"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -1273,7 +1273,7 @@
 				)
 			)
 		)
-		(property "LCSC" ""
+		(property "LCSC" "C441193"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -1323,7 +1323,7 @@
 		(pad "1" thru_hole rect
 			(at 2.5 0)
 			(size 2.5 2.5)
-			(drill 1.5)
+			(drill 1.6)
 			(layers "*.Cu" "*.Mask")
 			(remove_unused_layers no)
 			(net "/AC_L_IN")
@@ -1332,7 +1332,7 @@
 		(pad "2" thru_hole circle
 			(at -2.5 0)
 			(size 2.5 2.5)
-			(drill 1.5)
+			(drill 1.6)
 			(layers "*.Cu" "*.Mask")
 			(remove_unused_layers no)
 			(net "/AC_N")
@@ -2719,7 +2719,7 @@
 				)
 			)
 		)
-		(property "LCSC" ""
+		(property "LCSC" "C441210"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -2769,7 +2769,7 @@
 		(pad "1" thru_hole rect
 			(at 17.78 0)
 			(size 2.3 2.3)
-			(drill 1.5)
+			(drill 1.6)
 			(layers "*.Cu" "*.Mask")
 			(remove_unused_layers no)
 			(net "/AC_L")
@@ -2778,7 +2778,7 @@
 		(pad "2" thru_hole circle
 			(at 12.7 0)
 			(size 2.3 2.3)
-			(drill 1.5)
+			(drill 1.6)
 			(layers "*.Cu" "*.Mask")
 			(remove_unused_layers no)
 			(net "/DO_COM")
@@ -2787,7 +2787,7 @@
 		(pad "3" thru_hole circle
 			(at 7.62 0)
 			(size 2.3 2.3)
-			(drill 1.5)
+			(drill 1.6)
 			(layers "*.Cu" "*.Mask")
 			(remove_unused_layers no)
 			(net "/DO_4_NC")
@@ -2796,7 +2796,7 @@
 		(pad "4" thru_hole circle
 			(at 2.54 0)
 			(size 2.3 2.3)
-			(drill 1.5)
+			(drill 1.6)
 			(layers "*.Cu" "*.Mask")
 			(remove_unused_layers no)
 			(net "/DO_4_NO")
@@ -2805,7 +2805,7 @@
 		(pad "5" thru_hole circle
 			(at -2.54 0)
 			(size 2.3 2.3)
-			(drill 1.5)
+			(drill 1.6)
 			(layers "*.Cu" "*.Mask")
 			(remove_unused_layers no)
 			(net "/DO_3_NC")
@@ -2814,7 +2814,7 @@
 		(pad "6" thru_hole circle
 			(at -7.62 0)
 			(size 2.3 2.3)
-			(drill 1.5)
+			(drill 1.6)
 			(layers "*.Cu" "*.Mask")
 			(remove_unused_layers no)
 			(net "/DO_3_NO")
@@ -2823,7 +2823,7 @@
 		(pad "7" thru_hole circle
 			(at -12.7 0)
 			(size 2.3 2.3)
-			(drill 1.5)
+			(drill 1.6)
 			(layers "*.Cu" "*.Mask")
 			(remove_unused_layers no)
 			(net "/DO_2_NO")
@@ -2832,7 +2832,7 @@
 		(pad "8" thru_hole circle
 			(at -17.78 0)
 			(size 2.3 2.3)
-			(drill 1.5)
+			(drill 1.6)
 			(layers "*.Cu" "*.Mask")
 			(remove_unused_layers no)
 			(net "/DO_1_NO")
