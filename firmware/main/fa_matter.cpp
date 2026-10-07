@@ -238,6 +238,9 @@ static esp_matter_attr_val_t hvac_attr(uint32_t cluster, uint32_t attr)
  * 遙控端選了加熱／製冷或風速時，電源若是關的就順手打開（CHIP 執行緒內呼叫，已持鎖） */
 static void hvac_power_on_if_off(const char *why)
 {
+#if CONFIG_FA_HVAC_THERMOSTAT
+    return;                                    /* Thermostat 類型沒有 OnOff：模式本身就是電源 */
+#endif
     if (hvac_attr(OnOff::Id, OnOff::Attributes::OnOff::Id).val.b) return;
     ESP_LOGI(TAG, "溫控：%s，自動打開電源", why);
     esp_matter_attr_val_t on = esp_matter_bool(true);
@@ -250,8 +253,12 @@ static void push_hvac()
 {
     if (!s_ep_hvac || !s_cb.hvac) return;
     fa_hvac_cmd_t c = {};
-    c.power = hvac_attr(OnOff::Id, OnOff::Attributes::OnOff::Id).val.b;
     c.mode = hvac_attr(Thermostat::Id, Thermostat::Attributes::SystemMode::Id).val.u8;
+#if CONFIG_FA_HVAC_THERMOSTAT
+    c.power = c.mode != FA_HVAC_MODE_OFF;      /* 沒有 OnOff：模式關＝全關（風扇也停） */
+#else
+    c.power = hvac_attr(OnOff::Id, OnOff::Attributes::OnOff::Id).val.b;
+#endif
     c.heat_sp = hvac_attr(Thermostat::Id, Thermostat::Attributes::OccupiedHeatingSetpoint::Id).val.i16;
     c.cool_sp = hvac_attr(Thermostat::Id, Thermostat::Attributes::OccupiedCoolingSetpoint::Id).val.i16;
     c.fan_mode = s_hvac_fan;
@@ -648,6 +655,20 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
 #endif
 #if CONFIG_FA_DEVKIT_HVAC_ONLY
     {
+#if CONFIG_FA_HVAC_THERMOSTAT
+        /* 純 Thermostat（0x0301）：只有 Thermostat cluster（關／製冷／加熱），沒有電源、風速、顯示設定；
+         * 單一功能單一 endpoint，看塗鴉會不會給原生溫控面板。風速固定自動（fa_hvac 依溫差選） */
+        endpoint::thermostat::config_t c;
+        c.thermostat.feature_flags = cluster::thermostat::feature::heating::get_id() | cluster::thermostat::feature::cooling::get_id();
+        c.thermostat.control_sequence_of_operation = chip::to_underlying(Thermostat::ControlSequenceOfOperationEnum::kCoolingAndHeating);
+        c.thermostat.system_mode = FA_HVAC_MODE_OFF;
+        c.thermostat.local_temperature = nullable<int16_t>();
+        c.thermostat.features.heating.occupied_heating_setpoint = 2200;
+        c.thermostat.features.cooling.occupied_cooling_setpoint = 2600;
+        endpoint_t *ep = endpoint::thermostat::create(node, &c, ENDPOINT_FLAG_NONE, nullptr);
+        s_ep_hvac = ep ? endpoint::get_id(ep) : 0;
+        s_hvac_fan = FA_FAN_AUTO;
+#else
         /* Room Air Conditioner：add() 會自動建 OnOff（含 DeadFront）＋Thermostat 並強制加製冷；這裡再加加熱 */
         room_air_conditioner::config_t c;
         c.on_off.on_off = false;
@@ -659,6 +680,7 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
         c.thermostat.features.cooling.occupied_cooling_setpoint = 2600;
         endpoint_t *ep = room_air_conditioner::create(node, &c, ENDPOINT_FLAG_NONE, nullptr);
         s_ep_hvac = ep ? endpoint::get_id(ep) : 0;
+#endif
         if (ep) {
             /* 上下限（esp-matter 不自動建；HA 只讀 Abs）：加熱 5–35 °C、製冷 16–35 °C；運轉狀態 */
             cluster_t *tc = cluster::get(ep, Thermostat::Id);
@@ -671,6 +693,7 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
             cluster::thermostat::attribute::create_min_cool_setpoint_limit(tc, 1600);
             cluster::thermostat::attribute::create_max_cool_setpoint_limit(tc, 3500);
             cluster::thermostat::attribute::create_thermostat_running_state(tc, 0);
+#if !CONFIG_FA_HVAC_THERMOSTAT
             cluster::thermostat_user_interface_configuration::config_t ui;        /* 攝氏 */
             cluster::thermostat_user_interface_configuration::create(ep, &ui, CLUSTER_FLAG_SERVER);
             /* 風速：關／低／中／高／自動（FanModeSequence 2）、三段速度 */
@@ -684,8 +707,15 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
             if (!fan || cluster::fan_control::feature::multi_speed::add(fan, &ms) != ESP_OK ||
                 cluster::fan_control::feature::fan_auto::add(fan) != ESP_OK)
                 ESP_LOGE(TAG, "溫控：建立風速功能失敗");
+#endif
         }
-        ESP_LOGW(TAG, "實驗模式：只有新風溫控（Room Air Conditioner，endpoint %u）", s_ep_hvac);
+        ESP_LOGW(TAG, "實驗模式：只有新風溫控（%s，endpoint %u）",
+#if CONFIG_FA_HVAC_THERMOSTAT
+                 "Thermostat，無電源／風速",
+#else
+                 "Room Air Conditioner",
+#endif
+                 s_ep_hvac);
     }
 #endif
     int failed = 0;
