@@ -200,11 +200,15 @@ def build(version="2.0"):
         # 的下移）；C24 空位微調。GPO 不接：韌體每 50ms 輪詢 IT_STS_Dyn。V_EH 不用（預設關閉）。
         add("U6", "WOOW:ST25DV04KC", "ST25DV04KC-IE6S3", "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", "C3304276",
             {"1": None, "2": "NFC_AC0", "3": "NFC_AC1", "4": "GND", "5": "NFC_SDA", "6": "NFC_SCL", "7": None, "8": "+3V3"})
-        if v34:   # 板子平躺在導軌盒底座、前蓋離板 >50mm：改用 FPC 天線貼前蓋內側，J6（JST SH 2P）接回來。
-                  # 調諧電容依天線電感決定（docs/verification/V3.4.md 表），C22／C24 預設不上件
-            add("J6", "Connector_Generic:Conn_01x02", "NFC ANT", "Connector_JST:JST_SH_BM02B-SRSS-TB_1x02-1MP_P1.00mm_Vertical",
-                "C160388", {"1": "NFC_AC0", "2": "NFC_AC1"})   # MP 固定腳不接
-            add("C22", "Device:C", "DNP tune", C0603, "", {"1": "NFC_AC0", "2": "NFC_AC1"})
+        if v34:   # 板子平躺在導軌盒底座、前蓋離板 >50mm：FPC 天線貼前蓋內側，用線接回 J6。
+                  # 天線（使用者 10/07：用插的、不要焊）：Molex 1462362102（15×25mm、含 ferrite、102mm 雙絞線，
+                  # 線端 Micro-Lock Plus 505565-0201＋505431-1000 霧錫端子；DigiKey 庫存 2633、LCSC C3285166）。
+                  # J6＝配對的直立座 5055680271（C5350147，鍍錫鉍，和端子同為錫）。
+                  # 調諧：Molex 1462360001-PS 表列 La 3.3µH、Ca 4.9pF；ST25DV 內建 28.5pF →
+                  # C22 = 1/(ω²·3.3µH) − 28.5 − 4.9 ≈ 8.4pF → 8.2pF C0G（諧振約 13.58MHz）。C24 空位留給實測微調
+            add("J6", "Connector_Generic:Conn_01x02", "NFC ANT", "WOOW:Molex_MicroLockPlus_505568-0271_1x02_P1.25mm_Vertical",
+                "C5350147", {"1": "NFC_AC1", "2": "NFC_AC0"})   # 天線不分極性：Pin1／2 對調讓轉 180° 後接上原走線；MP 不接
+            add("C22", "Device:C", "8.2pF C0G", C0603, "C1685", {"1": "NFC_AC0", "2": "NFC_AC1"})
         else:
             add("L5", "Device:L", "NFC coil 1.27uH", "WOOW:NFC_Coil_14.9x14.6mm_8T", "", {"1": "NFC_AC0", "2": "NFC_AC1"})
             add("C22", "Device:C", "75pF C0G", C0603, "C1681", {"1": "NFC_AC0", "2": "NFC_AC1"})

@@ -55,7 +55,8 @@ def main():
             sch.components.add(lib_id=part["lib"], reference=ref, value=part["value"],
                                position=(snap(x + w / 2), snap(y + h / 2)), footprint=part["footprint"],
                                LCSC=part["lcsc"] or "")
-            if ref.startswith("H") or ref.startswith("TP") or ref.startswith("ANT") or ref in ("L5", "C24", "C22"):   # 固定孔、測試點、天線焊點：不進 BOM（與 PCB 一致）
+            if ref.startswith("H") or ref.startswith("TP") or ref.startswith("ANT") or ref in ("L5", "C24") \
+                    or (ref == "C22" and not part["lcsc"]):   # 固定孔、測試點、天線焊點、不上件的調諧電容：不進 BOM（與 PCB 一致）
                 sch.components.get(ref).in_bom = False
             if part["footprint"] == "WOOW:ProgPads_2x03_P2.54mm":   # V3.4 起 P2 是測試點（PCB 也不進 BOM）
                 sch.components.get(ref).in_bom = False

@@ -35,13 +35,13 @@ PLACE = {
     "L1": (120.9, 101.9, 90, False),     # 狀態燈：開窗裡 J5 旁邊看得到
     "R4": (120.9, 104.9, 90, False),
     "B1": (111.8, 110.6, 0, False),      # J5 後方：開蓋才按得到（學遙控器、恢復出廠可改用 NFC App）
-    "J6": (118.8, 111.1, 0, False),      # NFC 天線接頭（JST SH 直立）：線往上接前蓋內側的 FPC 天線
+    "J6": (118.5, 112.0, 0, False),      # 10/07 改 Micro-Lock Plus（固定腳較寬）：0° 讓固定腳朝南、離 P1 市電 ≥6.4mm；NFC 天線座（Molex Micro-Lock Plus 505568 直立）：線往上接前蓋內側的 FPC 天線
     "R23": (101.8, 110.8, 90, False),    # +12V 限流（J5 Pin1）
     # NFC：U6 與它的電容、I2C 上拉放背面、ESP32 下方（和 P2 一起）。第一次擺在 J5 後方的上緣口袋：口袋只有右端能出入，
     # U6 左側的天線與 I2C 訊號繞不出去（Freerouting 與 A* 都卡住）
     "U6": (119.0, 130.8, 90, True),
     "C23": (119.0, 135.6, 0, True),      # U6 VCC 去耦
-    "C22": (115.9, 135.6, 0, True),      # 調諧（依天線電感，預設不上件）
+    "C22": (115.9, 135.6, 0, True),      # 調諧 8.2pF（Molex 1462362102，見 design.py）
     "C24": (112.8, 135.6, 0, True),
     "U5": (114.9, 113.9, 0, True),       # TLP290-4：背面、U3 正下方；背面旋轉 0°＝Pin1–8（LED）朝左、9–16（集極）朝右
     "R15": (101.8, 110.7, 90, True), "R16": (104.3, 110.7, 90, True),
@@ -76,9 +76,9 @@ def step_place():
         b.Add(fp); fps[ref] = fp
     for ref, (x, y, rot, bottom) in PLACE.items():
         place(fps[ref], x, y, rot, bottom)
-    for ref in ("P2", "C22", "C24"):                                 # 測試點、不上件的調諧電容
+    for ref in ("P2", "C24"):                                        # 測試點、不上件的微調電容（C22 10/07 起上件）
         fps[ref].SetExcludedFromPosFiles(True)
-    for ref in ("P2", "C22", "C24"):
+    for ref in ("P2", "C24"):
         fps[ref].SetExcludedFromBOM(True)
     pcbnew.SaveBoard(OUT, b)
 

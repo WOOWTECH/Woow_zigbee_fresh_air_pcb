@@ -57,7 +57,10 @@ class Router:
 
         def infl(other):
             if other == net: return None
-            c = self.cl if (other and self.is_mains(other)) else self.selv
+            # 沒有網路的銅（連接器固定腳 MP、空腳）也交給 is_mains 判斷：繞市電時（is_mains("") 為 False）照樣
+            # 離它 selv；繞低壓時（lambda n: not MAINS(n)）只用小間距。舊寫法一律當市電，V3.4 換 J6（Micro-Lock
+            # Plus，固定腳離訊號腳 2.5mm）時把 J6 自己的腳整個圍死，A* 永遠接不上
+            c = self.cl if self.is_mains(other or "") else self.selv
             return c + hw
 
         def circle(L, gx, gy, r):

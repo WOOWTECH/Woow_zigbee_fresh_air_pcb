@@ -87,6 +87,11 @@ fp('ProgPads_2x03_P2.54mm','Programming test pads 2x3 P2.54mm (pogo-pin jig; pin
 # 輕觸開關 3.9×3.0（HYP TS-1088-AR02016，JLC 基礎料 C720477）：焊盤取自 JLC／EasyEDA 封裝 SW-SMD_L3.9-W3.0-P4.45
 pads=[pad_smd(1,-2.18,0,1.23,1.86),pad_smd(2,2.18,0,1.23,1.86)]
 fp('SW_SPST_TS-1088','SMD tactile switch 3.9x3.0mm (HYP TS-1088-AR02016, JLC C720477)',(-1.95,-1.5,1.95,1.5),(-3.05,-1.8,3.05,1.8),'smd',pads)
+# NFC 天線座（V3.4，使用者 10/07：天線用插的、不要焊）：Molex Micro-Lock Plus 1.25mm 2P 直立 SMD
+# 5055680271（JLC C5350147，端子鍍錫鉍，配天線線端 505565-0201＋505431-1000 霧錫端子）。
+# 焊盤取自 JLC／EasyEDA 封裝 CONN-SMD_2P-P1.25_5055680271（Pin1 在 −X）；本體外框取其絲印 x ±2.9、y −2.27..2.67
+pads=[pad_smd(1,-0.625,-1.19,0.8,1.2),pad_smd(2,0.625,-1.19,0.8,1.2),pad_smd('MP',-2.53,1.19,1.3,2.15),pad_smd('MP',2.53,1.19,1.3,2.15)]
+fp('Molex_MicroLockPlus_505568-0271_1x02_P1.25mm_Vertical','Molex Micro-Lock Plus 1.25mm 2P vertical SMD header 5055680271 (JLC C5350147), mates 505565-0201',(-2.9,-2.27,2.9,2.67),(-3.45,-2.5,3.45,2.9),'smd',pads)
 # 6x6 輕觸開關 SMD（ZX-QC66-4.3TP）：1,1 / 2,2
 pads=[pad_smd(1,-4.25,-2.25,2.1,1.4),pad_smd(1,4.25,-2.25,2.1,1.4),pad_smd(2,-4.25,2.25,2.1,1.4),pad_smd(2,4.25,2.25,2.1,1.4)]
 fp('SW_Push_6x6mm_SMD_ZX-QC66','6x6mm SMD tactile switch (Megastar ZX-QC66-4.3TP, JLC C7470150)',(-3,-3,3,3),(-5.4,-3.0,5.4,3.0),'smd',pads)
