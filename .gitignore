@@ -47,8 +47,5 @@ firmware/sdkconfig.coveronly.old
 firmware/build_hvaconly/
 firmware/sdkconfig.hvaconly
 firmware/sdkconfig.hvaconly.old
-firmware/build_thermostat/
-firmware/sdkconfig.thermostat
-firmware/sdkconfig.thermostat.old
 firmware/managed_components/
 firmware/test/test_core
