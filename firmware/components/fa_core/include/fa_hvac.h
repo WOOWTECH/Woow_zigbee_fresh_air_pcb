@@ -10,12 +10,14 @@
  *     使用者關機或切模式時立刻關（不等最少開），但下一次開仍要等滿最少關
  *   - 加熱關掉後風扇至少低速再吹 purge_ms 散熱（關機也一樣）
  *   - 風速：開機時依 FanMode；自動＝有需求時依溫差（≥2 °C 高、≥1 °C 中、其餘低），沒需求時低速換氣；
+ *     自動模式的風速至少維持 FA_HVAC_AUTO_FAN_HOLD_MS 才換（溫度感測器跳動不跟著變）；
  *     FanMode 關但正在加熱／製冷 → 強制低速（電熱與蒸發器一定要有風） */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
 
 #define FA_HVAC_TEMP_UNKNOWN INT16_MIN
+#define FA_HVAC_AUTO_FAN_HOLD_MS 30000
 
 enum { FA_HVAC_MODE_OFF = 0, FA_HVAC_MODE_COOL = 3, FA_HVAC_MODE_HEAT = 4 };
 enum { FA_FAN_OFF = 0, FA_FAN_LOW = 1, FA_FAN_MED = 2, FA_FAN_HIGH = 3, FA_FAN_ON = 4, FA_FAN_AUTO = 5 };
@@ -48,6 +50,8 @@ typedef struct {
     uint32_t heat_ms, cool_ms;         /* 上次切換時間 */
     bool     purging;
     uint32_t purge_until;
+    uint8_t  auto_fan;                 /* 自動模式目前的速度（0＝上一刻不是自動） */
+    uint32_t auto_fan_ms;              /* 上次換速時間 */
 } fa_hvac_t;
 
 void          fa_hvac_init(fa_hvac_t *h, const fa_hvac_cfg_t *cfg);

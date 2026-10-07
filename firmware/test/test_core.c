@@ -906,11 +906,11 @@ TEST(hvac_fan_modes)
     c.fan_mode = FA_FAN_OFF;  o = fa_hvac_tick(&h, &c, 2300, 0); CHECK(o.fan == 0 && o.running == 0);
     c.fan_mode = FA_FAN_AUTO; o = fa_hvac_tick(&h, &c, 2300, 0); CHECK(o.fan == 1);   /* 沒需求：低速換氣 */
     c.mode = FA_HVAC_MODE_HEAT;
-    o = fa_hvac_tick(&h, &c, 1950, 0); CHECK(o.heat && o.fan == 3);   /* 差 2.5 °C：高 */
-    o = fa_hvac_tick(&h, &c, 2050, 0); CHECK(o.fan == 2);             /* 差 1.5：中 */
-    o = fa_hvac_tick(&h, &c, 2150, 0); CHECK(o.fan == 1);             /* 差 0.5：低 */
+    o = fa_hvac_tick(&h, &c, 1950, 40000);  CHECK(o.heat && o.fan == 3);   /* 差 2.5 °C：高（距上次換速已 >30 秒） */
+    o = fa_hvac_tick(&h, &c, 2050, 80000);  CHECK(o.fan == 2);             /* 差 1.5：中 */
+    o = fa_hvac_tick(&h, &c, 2150, 120000); CHECK(o.fan == 1);             /* 差 0.5：低 */
     c.fan_mode = FA_FAN_OFF;
-    o = fa_hvac_tick(&h, &c, 2150, 0); CHECK(o.heat && o.fan == 1);   /* 風速關但在加熱：強制低速 */
+    o = fa_hvac_tick(&h, &c, 2150, 120000); CHECK(o.heat && o.fan == 1);   /* 風速關但在加熱：強制低速 */
 }
 
 TEST(hvac_rgb_color_and_brightness)
@@ -923,6 +923,22 @@ TEST(hvac_rgb_color_and_brightness)
     c = fa_hvac_rgb(&o, 96); CHECK(c.g == 50 && c.r == 0 && c.b == 0);
     o = (fa_hvac_out_t){0};
     c = fa_hvac_rgb(&o, 96); CHECK(c.r == 0 && c.g == 0 && c.b == 0);
+}
+
+TEST(hvac_auto_fan_holds_speed_30s)
+{
+    fa_hvac_t h; fa_hvac_init(&h, &HV_CFG);
+    fa_hvac_cmd_t c = {.power = true, .mode = FA_HVAC_MODE_HEAT, .heat_sp = 3500, .cool_sp = 2600, .fan_mode = FA_FAN_AUTO};
+    fa_hvac_out_t o = fa_hvac_tick(&h, &c, 3450, 0);              /* 差 0.5：低 */
+    CHECK(o.heat && o.fan == 1);
+    o = fa_hvac_tick(&h, &c, 3350, 2000); CHECK(o.fan == 1);      /* 差 1.5 但才 2 秒：維持低（感測器 1 °C 跳動不跟） */
+    o = fa_hvac_tick(&h, &c, 3450, 4000); CHECK(o.fan == 1);
+    o = fa_hvac_tick(&h, &c, 3350, 30001); CHECK(o.fan == 2);     /* 滿 30 秒仍差 1.5：升中速 */
+    o = fa_hvac_tick(&h, &c, 3450, 32000); CHECK(o.fan == 2);     /* 2 秒後又回 0.5：維持中速 */
+    c.fan_mode = FA_FAN_HIGH;
+    o = fa_hvac_tick(&h, &c, 3450, 33000); CHECK(o.fan == 3);     /* 手動風速立刻生效 */
+    c.fan_mode = FA_FAN_AUTO;
+    o = fa_hvac_tick(&h, &c, 3450, 34000); CHECK(o.fan == 1);     /* 從手動切回自動：立刻用自動值 */
 }
 
 int main(void)
@@ -989,6 +1005,7 @@ int main(void)
     RUN(hvac_power_off_and_unknown_temp);
     RUN(hvac_fan_modes);
     RUN(hvac_rgb_color_and_brightness);
+    RUN(hvac_auto_fan_holds_speed_30s);
     printf("%d tests, %d failures\n", ul_run, ul_fail);
     return ul_fail ? 1 : 0;
 }

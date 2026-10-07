@@ -60,17 +60,23 @@ fa_hvac_out_t fa_hvac_tick(fa_hvac_t *h, const fa_hvac_cmd_t *c, int16_t t, uint
         case FA_FAN_HIGH:
         case FA_FAN_ON:   fan = 3; break;
         case FA_FAN_AUTO: {
-            fan = 1;                                   /* 沒需求：低速換氣 */
+            uint8_t want = 1;                          /* 沒需求：低速換氣 */
             if (demand) {
                 int32_t sp = h->heat ? c->heat_sp : c->cool_sp;
                 int32_t d = t > sp ? t - sp : sp - t;
-                fan = d >= 200 ? 3 : d >= 100 ? 2 : 1;
+                want = d >= 200 ? 3 : d >= 100 ? 2 : 1;
             }
+            if (!h->auto_fan || (want != h->auto_fan && (uint32_t)(now - h->auto_fan_ms) >= FA_HVAC_AUTO_FAN_HOLD_MS)) {
+                h->auto_fan = want;
+                h->auto_fan_ms = now;
+            }
+            fan = h->auto_fan;
             break;
         }
         default: fan = 0; break;
         }
     }
+    if (!c->power || c->fan_mode != FA_FAN_AUTO) h->auto_fan = 0;   /* 離開自動：下次回自動立刻取當下值 */
     if ((demand || h->purging) && fan == 0) fan = 1;  /* 加熱／製冷／散熱中一定要有風 */
 
     fa_hvac_out_t o = {.heat = h->heat, .cool = h->cool, .fan = fan, .running = 0};

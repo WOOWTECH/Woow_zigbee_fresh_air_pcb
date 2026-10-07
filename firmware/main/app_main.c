@@ -785,6 +785,9 @@ void app_main(void)
 
     xTaskCreate(relay_task, "relay", 3072, NULL, 6, NULL);
     xTaskCreate(rf_task, "rf", 3072, NULL, 4, NULL);
+#if CONFIG_FA_DEVKIT_HVAC_ONLY
+    hvac_init();                                   /* 要在 ui_task 開始跑 hvac_step 之前 */
+#endif
     xTaskCreate(ui_task, "ui", 3072, NULL, 3, NULL);
     gpio_install_isr_service(0);
     gpio_isr_handler_add(PIN_RF_DATA, rf_isr, NULL);
@@ -795,9 +798,6 @@ void app_main(void)
     fa_nfc_port_start(PIN_NFC_SDA, PIN_NFC_SCL, &nfc_cb);
 #endif
     {
-#if CONFIG_FA_DEVKIT_HVAC_ONLY
-        hvac_init();
-#endif
 #if CONFIG_FA_DEVKIT_COVER_ONLY
         uint16_t cpos = FA_COVER_FULL;                             /* 沒存過：當作全關 */
         uint32_t ctravel = FA_COVER_TRAVEL_DEFAULT_MS;

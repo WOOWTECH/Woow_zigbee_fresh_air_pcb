@@ -59,6 +59,7 @@ static uint16_t    s_ep_cover, s_ep_travel;      /* 窗簾與行程時間選單�
 static uint16_t    s_cover_pos = FA_COVER_FULL;  /* fa_net_cover_init 給的開機位置 */
 static uint32_t    s_cover_travel_ms = FA_COVER_TRAVEL_DEFAULT_MS;
 static uint16_t    s_ep_hvac;                    /* 新風溫控（沒建＝0） */
+static bool        s_hvac_ready;                 /* server 起來後才把遙控端的風速當指令（開機還原不算） */
 static uint8_t     s_hvac_fan = FA_FAN_OFF;      /* Fan Control 目前的風速指令（FA_FAN_*，由 delegate 更新） */
 
 /* ---------------- Fixed Label（自訂 DeviceInfoProvider：標籤寫死在韌體，不必燒工廠分區） ---------------- */
@@ -233,6 +234,18 @@ static esp_matter_attr_val_t hvac_attr(uint32_t cluster, uint32_t attr)
     return v;
 }
 
+/* HA 的 climate 把 OnOff＝關 當成 hvac_mode off，但切模式只寫 SystemMode、不會開電源：
+ * 遙控端選了加熱／製冷或風速時，電源若是關的就順手打開（CHIP 執行緒內呼叫，已持鎖） */
+static void hvac_power_on_if_off(const char *why)
+{
+    if (hvac_attr(OnOff::Id, OnOff::Attributes::OnOff::Id).val.b) return;
+    ESP_LOGI(TAG, "溫控：%s，自動打開電源", why);
+    esp_matter_attr_val_t on = esp_matter_bool(true);
+    s_local = true;
+    attribute::update(s_ep_hvac, OnOff::Id, OnOff::Attributes::OnOff::Id, &on);
+    s_local = false;
+}
+
 static void push_hvac()
 {
     if (!s_ep_hvac || !s_cb.hvac) return;
@@ -268,6 +281,7 @@ public:
             break;
         }
         s_hvac_fan = f;
+        if (s_hvac_ready && f != FA_FAN_OFF) hvac_power_on_if_off("選了風速");
         push_hvac();
     }
 };
@@ -335,6 +349,9 @@ static esp_err_t on_attr(attribute::callback_type_t type, uint16_t ep, uint32_t 
                 return ESP_FAIL;
             }
         }
+        if (type == attribute::POST_UPDATE && cluster == Thermostat::Id && attr == Thermostat::Attributes::SystemMode::Id &&
+            val->val.u8 != FA_HVAC_MODE_OFF)
+            hvac_power_on_if_off("選了加熱／製冷");
         if (type == attribute::POST_UPDATE && (cluster == OnOff::Id || cluster == Thermostat::Id)) push_hvac();
         return ESP_OK;
     }
@@ -396,6 +413,7 @@ static void on_event(const ChipDeviceEvent *e, intptr_t arg)
 #if CONFIG_FA_DEVKIT_LIGHT
         refresh_light();                         /* 開機時套用上次存的燈狀態（屬性有存 NVS） */
 #endif
+        s_hvac_ready = true;
         push_hvac();                             /* 溫控：開機時套用存在 NVS 的開關／模式／設定溫度 */
         [[fallthrough]];
     case DeviceEventType::kCommissioningComplete:
