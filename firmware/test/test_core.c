@@ -819,6 +819,19 @@ TEST(cover_rgb_motion_and_position)
     CHECK(half.r > shut.r && half.r < open.r);
 }
 
+TEST(cover_stops_exactly_on_target_with_unaligned_ticks)
+{
+    fa_cover_t c; uint32_t t = 1003;
+    fa_cover_init(&c, 30000, FA_COVER_FULL);
+    fa_cover_goto(&c, 5000, t);
+    for (int i = 0; i < 3000 && fa_cover_busy(&c); i++) { t += 7; fa_cover_tick(&c, t); }   /* tick 不對齊目標時間 */
+    CHECK(!fa_cover_busy(&c));
+    CHECK_EQ(fa_cover_pos(&c), 5000);                                /* 實機曾停在 4999（halt 用時間重算位置） */
+    fa_cover_goto(&c, 7300, t);
+    for (int i = 0; i < 3000 && fa_cover_busy(&c); i++) { t += 13; fa_cover_tick(&c, t); }
+    CHECK_EQ(fa_cover_pos(&c), 7300);
+}
+
 int main(void)
 {
     RUN(mode_from_dip);
@@ -877,6 +890,7 @@ int main(void)
     RUN(cover_cycle_button_and_travel_change);
     RUN(cover_travel_presets_and_labels);
     RUN(cover_rgb_motion_and_position);
+    RUN(cover_stops_exactly_on_target_with_unaligned_ticks);
     printf("%d tests, %d failures\n", ul_run, ul_fail);
     return ul_fail ? 1 : 0;
 }

@@ -530,7 +530,9 @@ static void cover_step(uint32_t t)
         ESP_LOGI(TAG, "窗簾：%s，位置 %u.%02u%%", NAME[m], pos / 100, pos % 100);
         last_m = m;
     }
-    if (tgt != last_tgt || (pos > last_pos ? pos - last_pos : last_pos - pos) >= 200 || (!busy && pos != last_pos)) {
+    /* 到目標（含端點 overrun 開始時）立刻回報，不必等 2% 門檻或 overrun 跑完 */
+    if (tgt != last_tgt || (pos > last_pos ? pos - last_pos : last_pos - pos) >= 200 ||
+        (pos != last_pos && (!busy || pos == (uint16_t)s_cover.target))) {
         fa_net_report_cover(pos, tgt);
         last_pos = pos;
         last_tgt = tgt;

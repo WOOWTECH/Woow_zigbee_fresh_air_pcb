@@ -111,6 +111,7 @@ fa_cover_motor_t fa_cover_tick(fa_cover_t *c, uint32_t now)
         c->overrun_until = now + overrun_ms(c);
         return c->motor;
     }
+    c->overrun = true;                            /* 讓 halt 不再用時間重算位置（會差 1–2 個單位） */
     halt(c, now);
     return FA_COVER_STOP;
 }
