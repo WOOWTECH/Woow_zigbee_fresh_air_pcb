@@ -238,6 +238,7 @@ static esp_matter_attr_val_t hvac_attr(uint32_t cluster, uint32_t attr)
  * 遙控端選了加熱／製冷或風速時，電源若是關的就順手打開（CHIP 執行緒內呼叫，已持鎖） */
 static void hvac_power_on_if_off(const char *why)
 {
+    if (!cluster::get(s_ep_hvac, OnOff::Id)) return;   /* 沒有 OnOff：模式本身就是電源 */
     if (hvac_attr(OnOff::Id, OnOff::Attributes::OnOff::Id).val.b) return;
     ESP_LOGI(TAG, "溫控：%s，自動打開電源", why);
     esp_matter_attr_val_t on = esp_matter_bool(true);
@@ -250,10 +251,17 @@ static void push_hvac()
 {
     if (!s_ep_hvac || !s_cb.hvac) return;
     fa_hvac_cmd_t c = {};
-    c.power = hvac_attr(OnOff::Id, OnOff::Attributes::OnOff::Id).val.b;
     c.mode = hvac_attr(Thermostat::Id, Thermostat::Attributes::SystemMode::Id).val.u8;
+    c.power = !cluster::get(s_ep_hvac, OnOff::Id) || hvac_attr(OnOff::Id, OnOff::Attributes::OnOff::Id).val.b;
+#if CONFIG_FA_HVAC_THERMOSTAT
+    if (c.mode == FA_HVAC_MODE_OFF) c.power = false;   /* 沒有風速選項：模式關＝全關（風扇也停） */
+#endif
     c.heat_sp = hvac_attr(Thermostat::Id, Thermostat::Attributes::OccupiedHeatingSetpoint::Id).val.i16;
+#if CONFIG_FA_HVAC_HEAT_ONLY
+    c.cool_sp = 3500;                          /* 只加熱：沒有製冷設定點 */
+#else
     c.cool_sp = hvac_attr(Thermostat::Id, Thermostat::Attributes::OccupiedCoolingSetpoint::Id).val.i16;
+#endif
     c.fan_mode = s_hvac_fan;
     ESP_LOGI(TAG, "溫控指令：%s、模式 %u、加熱 %d.%02d °C、製冷 %d.%02d °C、風速 %u", c.power ? "開" : "關", c.mode,
              c.heat_sp / 100, c.heat_sp % 100, c.cool_sp / 100, c.cool_sp % 100, c.fan_mode);
@@ -344,7 +352,11 @@ static esp_err_t on_attr(attribute::callback_type_t type, uint16_t ep, uint32_t 
         /* 只支援 關(0)／製冷(3)／加熱(4)：CHIP server 只依 CSO 擋，不擋自動、送風、除濕 */
         if (type == attribute::PRE_UPDATE && cluster == Thermostat::Id && attr == Thermostat::Attributes::SystemMode::Id) {
             uint8_t m = val->val.u8;
+#if CONFIG_FA_HVAC_HEAT_ONLY
+            if (m != FA_HVAC_MODE_OFF && m != FA_HVAC_MODE_HEAT) {
+#else
             if (m != FA_HVAC_MODE_OFF && m != FA_HVAC_MODE_COOL && m != FA_HVAC_MODE_HEAT) {
+#endif
                 ESP_LOGW(TAG, "溫控：拒絕不支援的模式 %u", m);
                 return ESP_FAIL;
             }
@@ -648,6 +660,34 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
 #endif
 #if CONFIG_FA_DEVKIT_HVAC_ONLY
     {
+#if CONFIG_FA_HVAC_THERMOSTAT
+        /* 純 Thermostat（0x0301）：只有 Thermostat cluster（關／製冷／加熱），沒有電源、風速；
+         * 單一功能單一 endpoint，看塗鴉會不會給原生溫控面板。風速固定自動（fa_hvac 依溫差選） */
+        endpoint::thermostat::config_t c;
+#if CONFIG_FA_HVAC_HEAT_ONLY
+        /* 只加熱（地暖型）：塗鴉自家的 Matter 溫控器都是這型，冷暖版面板載入失敗 99999 */
+        c.thermostat.feature_flags = cluster::thermostat::feature::heating::get_id();
+        c.thermostat.control_sequence_of_operation = chip::to_underlying(Thermostat::ControlSequenceOfOperationEnum::kHeatingOnly);
+        c.thermostat.system_mode = FA_HVAC_MODE_HEAT;
+#else
+        c.thermostat.feature_flags = cluster::thermostat::feature::heating::get_id() | cluster::thermostat::feature::cooling::get_id();
+        c.thermostat.control_sequence_of_operation = chip::to_underlying(Thermostat::ControlSequenceOfOperationEnum::kCoolingAndHeating);
+        c.thermostat.system_mode = FA_HVAC_MODE_OFF;
+#endif
+        c.thermostat.local_temperature = nullable<int16_t>();
+        c.thermostat.features.heating.occupied_heating_setpoint = 2200;
+        c.thermostat.features.cooling.occupied_cooling_setpoint = 2600;
+        endpoint_t *ep = endpoint::thermostat::create(node, &c, ENDPOINT_FLAG_NONE, nullptr);
+        s_ep_hvac = ep ? endpoint::get_id(ep) : 0;
+        s_hvac_fan = FA_FAN_AUTO;
+#if !CONFIG_FA_HVAC_HEAT_ONLY
+        if (ep) {                                  /* 塗鴉面板實驗：加回電源開關（只有 Thermostat＋顯示設定時面板載入失敗 99999） */
+            cluster::on_off::config_t oo;
+            oo.on_off = true;
+            cluster::on_off::create(ep, &oo, CLUSTER_FLAG_SERVER);
+        }
+#endif
+#else
         /* Room Air Conditioner：add() 會自動建 OnOff（含 DeadFront）＋Thermostat 並強制加製冷；這裡再加加熱 */
         room_air_conditioner::config_t c;
         c.on_off.on_off = false;
@@ -659,6 +699,7 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
         c.thermostat.features.cooling.occupied_cooling_setpoint = 2600;
         endpoint_t *ep = room_air_conditioner::create(node, &c, ENDPOINT_FLAG_NONE, nullptr);
         s_ep_hvac = ep ? endpoint::get_id(ep) : 0;
+#endif
         if (ep) {
             /* 上下限（esp-matter 不自動建；HA 只讀 Abs）：加熱 5–35 °C、製冷 16–35 °C；運轉狀態 */
             cluster_t *tc = cluster::get(ep, Thermostat::Id);
@@ -666,13 +707,16 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
             cluster::thermostat::attribute::create_abs_max_heat_setpoint_limit(tc, 3500);
             cluster::thermostat::attribute::create_min_heat_setpoint_limit(tc, 500);
             cluster::thermostat::attribute::create_max_heat_setpoint_limit(tc, 3500);
+#if !CONFIG_FA_HVAC_HEAT_ONLY
             cluster::thermostat::attribute::create_abs_min_cool_setpoint_limit(tc, 1600);
             cluster::thermostat::attribute::create_abs_max_cool_setpoint_limit(tc, 3500);
             cluster::thermostat::attribute::create_min_cool_setpoint_limit(tc, 1600);
             cluster::thermostat::attribute::create_max_cool_setpoint_limit(tc, 3500);
+#endif
             cluster::thermostat::attribute::create_thermostat_running_state(tc, 0);
-            cluster::thermostat_user_interface_configuration::config_t ui;        /* 攝氏 */
+            cluster::thermostat_user_interface_configuration::config_t ui;        /* 攝氏（Thermostat 版也要：塗鴉面板少了它會載入失敗？實驗中） */
             cluster::thermostat_user_interface_configuration::create(ep, &ui, CLUSTER_FLAG_SERVER);
+#if !CONFIG_FA_HVAC_THERMOSTAT
             /* 風速：關／低／中／高／自動（FanModeSequence 2）、三段速度 */
             cluster::fan_control::config_t fc;
             fc.fan_mode = chip::to_underlying(FanControl::FanModeEnum::kAuto);
@@ -684,8 +728,17 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
             if (!fan || cluster::fan_control::feature::multi_speed::add(fan, &ms) != ESP_OK ||
                 cluster::fan_control::feature::fan_auto::add(fan) != ESP_OK)
                 ESP_LOGE(TAG, "溫控：建立風速功能失敗");
+#endif
         }
-        ESP_LOGW(TAG, "實驗模式：只有新風溫控（Room Air Conditioner，endpoint %u）", s_ep_hvac);
+        ESP_LOGW(TAG, "實驗模式：只有新風溫控（%s，endpoint %u）",
+#if CONFIG_FA_HVAC_HEAT_ONLY
+                 "Thermostat 只加熱，無電源／風速",
+#elif CONFIG_FA_HVAC_THERMOSTAT
+                 "Thermostat，無電源／風速",
+#else
+                 "Room Air Conditioner",
+#endif
+                 s_ep_hvac);
     }
 #endif
     int failed = 0;

@@ -1,0 +1,7 @@
+# 診斷用：CHIP detail log 編進去（執行時只開 chip[DMG]／chip[IM]，看 controller 讀了哪些屬性）
+# 用法（只加熱實驗＋detail log）：idf.py -B build_thermodbg -D FA_DBGLOG=1 -D SDKCONFIG=sdkconfig.thermodbg -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.devkit;sdkconfig.defaults.thermostat;sdkconfig.defaults.debuglog" build
+# CHIP_LOG 等級不能高於 LOG_DEFAULT_LEVEL，所以兩個都要開；-D FA_DBGLOG=1 把上游 printf 格式錯誤降成警告
+CONFIG_CHIP_LOG_DEFAULT_LEVEL_DETAIL=y
+CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y
+CONFIG_CHIP_LOG_DEFAULT_LEVEL=4
+CONFIG_LOG_DEFAULT_LEVEL_DEBUG=y

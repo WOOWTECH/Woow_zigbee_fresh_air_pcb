@@ -1,0 +1,7 @@
+# 實驗：只有新風溫控，純 Thermostat 只加熱（塗鴉拿到原生溫控面板的組合）；溫度補償 -10 °C、最少開關 10 秒是開發板測試值。疊在 devkit 上：
+# idf.py -B build_thermostat -D SDKCONFIG=sdkconfig.thermostat -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.devkit;sdkconfig.defaults.thermostat" build
+CONFIG_FA_DEVKIT_HVAC_ONLY=y
+CONFIG_FA_HVAC_THERMOSTAT=y
+CONFIG_FA_HVAC_HEAT_ONLY=y
+CONFIG_FA_HVAC_TEMP_OFFSET_CENTI=-1000
+CONFIG_FA_HVAC_MIN_CYCLE_S=10

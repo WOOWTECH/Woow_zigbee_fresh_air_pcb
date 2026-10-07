@@ -748,6 +748,10 @@ static void gpio_setup(void)
 
 void app_main(void)
 {
+#if CONFIG_CHIP_LOG_DEFAULT_LEVEL >= 4
+    esp_log_level_set("*", ESP_LOG_INFO);                  /* 診斷版：detail 只開讀寫／訂閱路徑 */
+    esp_log_level_set("chip[DMG]", ESP_LOG_DEBUG);
+#endif
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());

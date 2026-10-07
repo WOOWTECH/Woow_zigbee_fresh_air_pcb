@@ -15,6 +15,11 @@ set(EXTRA_COMPONENT_DIRS
     "${MATTER_SDK_PATH}/config/esp32/components"
     "${ESP_MATTER_PATH}/components"
     ${extra_components_dirs_append})
+# 診斷版（-D FA_DBGLOG=1，配 sdkconfig.defaults.debuglog）：CHIP detail log 會編到上游有 printf 格式錯誤的程式碼，只降成警告
+if(FA_DBGLOG)
+    idf_build_set_property(COMPILE_OPTIONS "-Wno-error=format" APPEND)
+endif()
+
 project(wo30109_fresh_air)
 idf_build_set_property(CXX_COMPILE_OPTIONS "-std=gnu++17;-Os;-DCHIP_HAVE_CONFIG_H;-Wno-overloaded-virtual" APPEND)
 idf_build_set_property(C_COMPILE_OPTIONS "-Os" APPEND)

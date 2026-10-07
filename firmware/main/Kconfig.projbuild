@@ -54,6 +54,23 @@ menu "WO30109 新風控制器"
             開發板沒有繼電器：輸出看 log 與板載 RGB（加熱紅、製冷藍、送風綠，亮度＝風速）。
             室溫先用 ESP32-C6 內建溫度感測器（量的是晶片溫度，比室溫高；只用來測控制與各 App 面板）。
 
+    config FA_HVAC_THERMOSTAT
+        bool "溫控改用純 Thermostat 類型（沒有電源、風速；塗鴉面板實驗）"
+        depends on FA_DEVKIT_HVAC_ONLY
+        default n
+        help
+            只建一個 Thermostat（0x0301）endpoint，只有 Thermostat cluster（關／製冷／加熱）。
+            模式關＝全關；風速固定自動（依溫差選低中高）。
+            用來測塗鴉對單一功能 Thermostat 會不會給原生面板（Room Air Conditioner 只拿到通用頁面）。
+
+    config FA_HVAC_HEAT_ONLY
+        bool "Thermostat 只加熱（地暖型，模式只有關／加熱）"
+        depends on FA_HVAC_THERMOSTAT
+        default n
+        help
+            Thermostat 只開 Heating feature、ControlSequenceOfOperation＝HeatingOnly，沒有製冷設定點與電源開關。
+            塗鴉自家 Matter 溫控器都是地暖型；用來測冷暖版在塗鴉面板載入失敗（99999）是不是因為製冷。
+
     config FA_HVAC_HYST_CENTI
         int "溫控緩衝（0.01 °C）"
         depends on FA_DEVKIT_HVAC_ONLY
