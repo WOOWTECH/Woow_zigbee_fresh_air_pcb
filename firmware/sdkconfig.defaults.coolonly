@@ -1,0 +1,4 @@
+# 實驗：純 Thermostat 只製冷（疊在 sdkconfig.defaults.thermostat 之後，把只加熱換成只製冷）：
+# idf.py -B build_cooldbg -D FA_DBGLOG=1 -D SDKCONFIG=sdkconfig.cooldbg -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.devkit;sdkconfig.defaults.thermostat;sdkconfig.defaults.coolonly;sdkconfig.defaults.debuglog" build
+CONFIG_FA_HVAC_HEAT_ONLY=n
+CONFIG_FA_HVAC_COOL_ONLY=y

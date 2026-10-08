@@ -54,6 +54,7 @@ IRM-02-12 額定 12V 167mA。ESP32-C6 Zigbee 發射 +12dBm 峰值 185mA@3.3V，�
 - 開發板模式多一個 Matter 彩色燈（EP21，Extended Color Light）：controller 開燈時板載 RGB 顯示它設的顏色／亮度／色溫，關燈回到狀態顯示；`fa_core/fa_color`（xy、色溫 → RGB，主機測試）。
 - 開發板彩色燈：色溫限制 2000–6000K（physical 167–500 mireds，超出由 Matter 夾住）；板載燈位元組順序可選（`FA_DEVKIT_RGB_ORDER`，預設 RGB，修正紅綠對調）。
 - 開發板彩色燈：加 Hue/Saturation＋Enhanced Hue（塗鴉色盤用這組指令）；關燈且一切正常時板載燈全暗（原本回到暗白狀態燈）；OnLevel 改 null，開燈回到上次亮度。
+- 溫控器實驗（`CONFIG_FA_DEVKIT_HVAC_ONLY`）：`fa_core/fa_hvac` 冷暖遲滯、最少開關、加熱後吹風、自動風速。塗鴉只對**單一模式**的 Thermostat（只加熱 `FA_HVAC_HEAT_ONLY`／只製冷 `FA_HVAC_COOL_ONLY`）給原生溫控面板；冷暖或 Room Air Conditioner 只有通用頁面或 99999。HA 各組合都正常。
 - 窗簾實驗（`CONFIG_FA_DEVKIT_COVER_ONLY`）：時間式比例控制（`fa_core/fa_cover`），K1 開／K2 關、換向停 500ms、端點多跑 1/10；行程時間下拉選單掛在窗簾同一個 endpoint；馬達方向反轉。塗鴉實測拿到原生窗簾頁、HA 正常。
 - 上機驗收清單 `docs/verification/V4.0-checklist.md`（開發板 Wi-Fi／Thread／V3.4 板三階段，63 項）；查證筆記 `docs/v4-matter-research.md`。
 

@@ -256,7 +256,11 @@ static void push_hvac()
 #if CONFIG_FA_HVAC_THERMOSTAT
     if (c.mode == FA_HVAC_MODE_OFF) c.power = false;   /* 沒有風速選項：模式關＝全關（風扇也停） */
 #endif
+#if CONFIG_FA_HVAC_COOL_ONLY
+    c.heat_sp = 500;                           /* 只製冷：沒有加熱設定點 */
+#else
     c.heat_sp = hvac_attr(Thermostat::Id, Thermostat::Attributes::OccupiedHeatingSetpoint::Id).val.i16;
+#endif
 #if CONFIG_FA_HVAC_HEAT_ONLY
     c.cool_sp = 3500;                          /* 只加熱：沒有製冷設定點 */
 #else
@@ -354,6 +358,8 @@ static esp_err_t on_attr(attribute::callback_type_t type, uint16_t ep, uint32_t 
             uint8_t m = val->val.u8;
 #if CONFIG_FA_HVAC_HEAT_ONLY
             if (m != FA_HVAC_MODE_OFF && m != FA_HVAC_MODE_HEAT) {
+#elif CONFIG_FA_HVAC_COOL_ONLY
+            if (m != FA_HVAC_MODE_OFF && m != FA_HVAC_MODE_COOL) {
 #else
             if (m != FA_HVAC_MODE_OFF && m != FA_HVAC_MODE_COOL && m != FA_HVAC_MODE_HEAT) {
 #endif
@@ -669,6 +675,11 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
         c.thermostat.feature_flags = cluster::thermostat::feature::heating::get_id();
         c.thermostat.control_sequence_of_operation = chip::to_underlying(Thermostat::ControlSequenceOfOperationEnum::kHeatingOnly);
         c.thermostat.system_mode = FA_HVAC_MODE_HEAT;
+#elif CONFIG_FA_HVAC_COOL_ONLY
+        /* 只製冷：比照只加熱的成功組合（單一 feature、單一模式、無另一個設定點、無 OnOff） */
+        c.thermostat.feature_flags = cluster::thermostat::feature::cooling::get_id();
+        c.thermostat.control_sequence_of_operation = chip::to_underlying(Thermostat::ControlSequenceOfOperationEnum::kCoolingOnly);
+        c.thermostat.system_mode = FA_HVAC_MODE_COOL;
 #else
         c.thermostat.feature_flags = cluster::thermostat::feature::heating::get_id() | cluster::thermostat::feature::cooling::get_id();
         c.thermostat.control_sequence_of_operation = chip::to_underlying(Thermostat::ControlSequenceOfOperationEnum::kCoolingAndHeating);
@@ -680,7 +691,7 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
         endpoint_t *ep = endpoint::thermostat::create(node, &c, ENDPOINT_FLAG_NONE, nullptr);
         s_ep_hvac = ep ? endpoint::get_id(ep) : 0;
         s_hvac_fan = FA_FAN_AUTO;
-#if !CONFIG_FA_HVAC_HEAT_ONLY
+#if !CONFIG_FA_HVAC_HEAT_ONLY && !CONFIG_FA_HVAC_COOL_ONLY
         if (ep) {                                  /* 塗鴉面板實驗：加回電源開關（只有 Thermostat＋顯示設定時面板載入失敗 99999） */
             cluster::on_off::config_t oo;
             oo.on_off = true;
@@ -703,10 +714,12 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
         if (ep) {
             /* 上下限（esp-matter 不自動建；HA 只讀 Abs）：加熱 5–35 °C、製冷 16–35 °C；運轉狀態 */
             cluster_t *tc = cluster::get(ep, Thermostat::Id);
+#if !CONFIG_FA_HVAC_COOL_ONLY
             cluster::thermostat::attribute::create_abs_min_heat_setpoint_limit(tc, 500);
             cluster::thermostat::attribute::create_abs_max_heat_setpoint_limit(tc, 3500);
             cluster::thermostat::attribute::create_min_heat_setpoint_limit(tc, 500);
             cluster::thermostat::attribute::create_max_heat_setpoint_limit(tc, 3500);
+#endif
 #if !CONFIG_FA_HVAC_HEAT_ONLY
             cluster::thermostat::attribute::create_abs_min_cool_setpoint_limit(tc, 1600);
             cluster::thermostat::attribute::create_abs_max_cool_setpoint_limit(tc, 3500);
@@ -733,6 +746,8 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
         ESP_LOGW(TAG, "實驗模式：只有新風溫控（%s，endpoint %u）",
 #if CONFIG_FA_HVAC_HEAT_ONLY
                  "Thermostat 只加熱，無電源／風速",
+#elif CONFIG_FA_HVAC_COOL_ONLY
+                 "Thermostat 只製冷，無電源／風速",
 #elif CONFIG_FA_HVAC_THERMOSTAT
                  "Thermostat，無電源／風速",
 #else

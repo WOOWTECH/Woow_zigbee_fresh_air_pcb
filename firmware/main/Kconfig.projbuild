@@ -71,6 +71,14 @@ menu "WO30109 新風控制器"
             Thermostat 只開 Heating feature、ControlSequenceOfOperation＝HeatingOnly，沒有製冷設定點與電源開關。
             塗鴉自家 Matter 溫控器都是地暖型；用來測冷暖版在塗鴉面板載入失敗（99999）是不是因為製冷。
 
+    config FA_HVAC_COOL_ONLY
+        bool "Thermostat 只製冷（模式只有關／製冷）"
+        depends on FA_HVAC_THERMOSTAT && !FA_HVAC_HEAT_ONLY
+        default n
+        help
+            Thermostat 只開 Cooling feature、ControlSequenceOfOperation＝CoolingOnly，沒有加熱設定點與電源開關。
+            比照只加熱拿到塗鴉原生溫控面板的組合，測只製冷是否也能拿到。
+
     config FA_HVAC_HYST_CENTI
         int "溫控緩衝（0.01 °C）"
         depends on FA_DEVKIT_HVAC_ONLY

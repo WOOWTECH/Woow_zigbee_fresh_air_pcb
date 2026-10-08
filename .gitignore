@@ -53,5 +53,8 @@ firmware/sdkconfig.thermostat.old
 firmware/build_thermodbg/
 firmware/sdkconfig.thermodbg
 firmware/sdkconfig.thermodbg.old
+firmware/build_cooldbg/
+firmware/sdkconfig.cooldbg
+firmware/sdkconfig.cooldbg.old
 firmware/managed_components/
 firmware/test/test_core
