@@ -1,0 +1,3 @@
+# 實驗：風扇改成空氣清淨機裝置類型（疊在 fanonly 之後）：
+# idf.py -B build_purdbg -D FA_DBGLOG=1 -D SDKCONFIG=sdkconfig.purdbg -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.devkit;sdkconfig.defaults.fanonly;sdkconfig.defaults.purifier;sdkconfig.defaults.debuglog" build
+CONFIG_FA_FAN_AS_PURIFIER=y

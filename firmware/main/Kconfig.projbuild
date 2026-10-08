@@ -71,6 +71,15 @@ menu "WO30109 新風控制器"
             Fan endpoint 多一個 OnOff：輸出＝電源開 ? 風速 : 關；選風速時電源關著就自動開，開電源時風速是 0 就用低速。
             塗鴉實驗：只有 Fan Control 時拿到通用頁面（未翻譯的 dp_fan_mode_*），測加電源開關能不能拿到原生風扇面板。
 
+    config FA_FAN_AS_PURIFIER
+        bool "風扇改用空氣清淨機裝置類型（Air Purifier 0x002D）"
+        depends on FA_DEVKIT_FAN_ONLY
+        default n
+        help
+            同樣只有 Fan Control（＋FA_FAN_ONOFF 的電源開關），裝置類型改成 Air Purifier。
+            塗鴉實驗：Fan（0x002B）不論有沒有電源開關都只拿到固定的通用風扇範本（dp_fan_mode_* 未翻譯），
+            測空氣清淨機類型能不能拿到原生面板。
+
     config FA_HVAC_THERMOSTAT
         bool "溫控改用純 Thermostat 類型（沒有電源、風速；塗鴉面板實驗）"
         depends on FA_DEVKIT_HVAC_ONLY

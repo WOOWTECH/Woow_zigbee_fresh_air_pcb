@@ -828,11 +828,19 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
 #if CONFIG_FA_DEVKIT_FAN_ONLY
     {
         /* 純 Fan（0x002B）：Fan Control 關／低／中／高、MultiSpeed 三段；沒有 OnOff、沒有 Auto */
+#if CONFIG_FA_FAN_AS_PURIFIER
+        endpoint::air_purifier::config_t c;          /* 空氣清淨機（0x002D）：同樣只有 Fan Control，裝置類型不同 */
+#else
         endpoint::fan::config_t c;
+#endif
         c.fan_control.fan_mode = chip::to_underlying(FanControl::FanModeEnum::kOff);
         c.fan_control.fan_mode_sequence = chip::to_underlying(FanControl::FanModeSequenceEnum::kOffLowMedHigh);
         c.fan_control.delegate = &s_fan_delegate;
+#if CONFIG_FA_FAN_AS_PURIFIER
+        endpoint_t *ep = endpoint::air_purifier::create(node, &c, ENDPOINT_FLAG_NONE, nullptr);
+#else
         endpoint_t *ep = endpoint::fan::create(node, &c, ENDPOINT_FLAG_NONE, nullptr);
+#endif
         s_ep_fan = ep ? endpoint::get_id(ep) : 0;
         if (ep) {
 #if CONFIG_FA_FAN_ONOFF
@@ -848,7 +856,8 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
             if (cluster::fan_control::feature::multi_speed::add(cluster::get(ep, FanControl::Id), &ms) != ESP_OK)
                 ESP_LOGE(TAG, "風扇：加三段速度失敗");
         }
-        ESP_LOGW(TAG, "實驗模式：只有風扇（Fan，關／低／中／高%s，endpoint %u）",
+        ESP_LOGW(TAG, "實驗模式：只有風扇（%s，關／低／中／高%s，endpoint %u）",
+                 CONFIG_FA_FAN_AS_PURIFIER ? "Air Purifier" : "Fan",
                  CONFIG_FA_FAN_ONOFF ? "＋電源開關" : "", s_ep_fan);
     }
 #endif

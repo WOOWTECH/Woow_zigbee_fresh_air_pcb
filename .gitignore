@@ -59,5 +59,8 @@ firmware/sdkconfig.cooldbg.old
 firmware/build_fandbg/
 firmware/sdkconfig.fandbg
 firmware/sdkconfig.fandbg.old
+firmware/build_purdbg/
+firmware/sdkconfig.purdbg
+firmware/sdkconfig.purdbg.old
 firmware/managed_components/
 firmware/test/test_core
