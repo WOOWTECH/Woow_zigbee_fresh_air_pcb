@@ -61,6 +61,7 @@ static uint16_t    s_cover_pos = FA_COVER_FULL;  /* fa_net_cover_init 給的開�
 static uint32_t    s_cover_travel_ms = FA_COVER_TRAVEL_DEFAULT_MS;
 static uint16_t    s_ep_hvac;                    /* 新風溫控（沒建＝0） */
 static uint16_t    s_ep_fan;                     /* 風扇實驗（沒建＝0） */
+static uint8_t     s_fan_speed;                  /* 風扇：Fan Control 目前設的速度 0–3（電源開時才輸出） */
 static bool        s_hvac_ready;                 /* server 起來後才把遙控端的風速當指令（開機還原不算） */
 static uint8_t     s_hvac_fan = FA_FAN_OFF;      /* Fan Control 目前的風速指令（FA_FAN_*，由 delegate 更新） */
 
@@ -274,6 +275,23 @@ static void push_hvac()
     s_cb.hvac(&c);
 }
 
+/* 風扇：有 OnOff（FA_FAN_ONOFF）時輸出＝電源開 ? 風速 : 0；沒有 OnOff 時直接輸出風速（CHIP 執行緒或持鎖時呼叫） */
+static bool fan_power(bool *has)
+{
+    *has = s_ep_fan && cluster::get(s_ep_fan, OnOff::Id);
+    if (!*has) return true;
+    esp_matter_attr_val_t v = esp_matter_invalid(nullptr);
+    attribute::get_val(attribute::get(s_ep_fan, OnOff::Id, OnOff::Attributes::OnOff::Id), &v);
+    return v.val.b;
+}
+
+static void push_fan()
+{
+    if (!s_ep_fan || !s_cb.fan) return;
+    bool has, on = fan_power(&has);
+    s_cb.fan(on ? s_fan_speed : 0);
+}
+
 /* Fan Control 在這版 SDK 是 code-driven cluster（不走 esp-matter 屬性回呼）：改由 delegate 收風速 */
 class FaFanDelegate : public FanControl::Delegate {
 public:
@@ -298,7 +316,16 @@ public:
             uint8_t sp = f == FA_FAN_AUTO ? (uint8_t)FA_FAN_HIGH : f;
             ESP_LOGI(TAG, "風扇指令：模式 %u、速度 %u → %u", chip::to_underlying(st.mode),
                      st.speedSetting.IsNull() ? 255 : st.speedSetting.Value(), sp);
-            if (s_cb.fan) s_cb.fan(sp);
+            s_fan_speed = sp;
+            bool has, on = fan_power(&has);
+            if (has && sp && !on) {                          /* 選了風速但電源關著：順手開電源 */
+                esp_matter_attr_val_t v = esp_matter_bool(true);
+                s_local = true;
+                attribute::update(s_ep_fan, OnOff::Id, OnOff::Attributes::OnOff::Id, &v);
+                s_local = false;
+                ESP_LOGI(TAG, "風扇：選了風速，自動打開電源");
+            }
+            push_fan();
             return;
         }
         s_hvac_fan = f;
@@ -359,6 +386,18 @@ static esp_err_t on_attr(attribute::callback_type_t type, uint16_t ep, uint32_t 
         bool rev = val->val.u8 & chip::to_underlying(WindowCovering::Mode::kMotorDirectionReversed);
         ESP_LOGI(TAG, "窗簾：馬達方向%s", rev ? "反轉（K1＝關、K2＝開）" : "正常（K1＝開、K2＝關）");
         if (s_cb.cover_reverse) s_cb.cover_reverse(rev);
+        return ESP_OK;
+    }
+    if (ep && ep == s_ep_fan && !s_local) {
+        if (type == attribute::POST_UPDATE && cluster == OnOff::Id && attr == OnOff::Attributes::OnOff::Id) {
+            ESP_LOGI(TAG, "風扇：電源%s（風速 %u）", val->val.b ? "開" : "關", s_fan_speed);
+            if (val->val.b && !s_fan_speed)                  /* 開電源但風速是 0：用低速（會再觸發 delegate → push_fan） */
+                if (FanControlCluster *fc = FanControl::FindClusterOnEndpoint(s_ep_fan)) {
+                    fc->SetFanMode(FanControl::FanModeEnum::kLow);
+                    return ESP_OK;
+                }
+            push_fan();
+        }
         return ESP_OK;
     }
     if (ep && ep == s_ep_hvac && !s_local) {
@@ -441,11 +480,12 @@ static void on_event(const ChipDeviceEvent *e, intptr_t arg)
         refresh_light();                         /* 開機時套用上次存的燈狀態（屬性有存 NVS） */
 #endif
         s_hvac_ready = true;
-        if (s_ep_fan && s_cb.fan)                /* 風扇：開機時套用存在 NVS 的風速（FanMode 會還原） */
+        if (s_ep_fan)                            /* 風扇：開機時套用存在 NVS 的風速與電源（FanMode、OnOff 會還原） */
             if (FanControlCluster *fc = FanControl::FindClusterOnEndpoint(s_ep_fan)) {
                 auto sp = fc->GetSpeedSetting();
-                s_cb.fan(fc->GetFanMode() == FanControl::FanModeEnum::kOff ? 0
-                         : (!sp.IsNull() && sp.Value() <= 3) ? sp.Value() : (uint8_t)FA_FAN_HIGH);
+                s_fan_speed = fc->GetFanMode() == FanControl::FanModeEnum::kOff ? 0
+                            : (!sp.IsNull() && sp.Value() <= 3) ? sp.Value() : (uint8_t)FA_FAN_HIGH;
+                push_fan();
             }
         push_hvac();                             /* 溫控：開機時套用存在 NVS 的開關／模式／設定溫度 */
         [[fallthrough]];
@@ -721,7 +761,10 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
         if (ep) {                                  /* 塗鴉面板實驗：加回電源開關（只有 Thermostat＋顯示設定時面板載入失敗 99999） */
             cluster::on_off::config_t oo;
             oo.on_off = true;
-            cluster::on_off::create(ep, &oo, CLUSTER_FLAG_SERVER);
+            if (cluster_t *onc = cluster::on_off::create(ep, &oo, CLUSTER_FLAG_SERVER)) {
+                cluster::on_off::command::create_on(onc);     /* create() 只建 Off；On／Toggle 要自己加（Room AC 是 add() 內建） */
+                cluster::on_off::command::create_toggle(onc);
+            }
         }
 #endif
 #else
@@ -792,12 +835,21 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
         endpoint_t *ep = endpoint::fan::create(node, &c, ENDPOINT_FLAG_NONE, nullptr);
         s_ep_fan = ep ? endpoint::get_id(ep) : 0;
         if (ep) {
+#if CONFIG_FA_FAN_ONOFF
+            cluster::on_off::config_t oo;            /* 電源開關（塗鴉實驗 2：只有 Fan Control 時拿到通用頁面） */
+            oo.on_off = false;
+            if (cluster_t *onc = cluster::on_off::create(ep, &oo, CLUSTER_FLAG_SERVER)) {
+                cluster::on_off::command::create_on(onc);     /* create() 只建 Off；On／Toggle 要自己加（Room AC 是 add() 內建） */
+                cluster::on_off::command::create_toggle(onc);
+            }
+#endif
             cluster::fan_control::feature::multi_speed::config_t ms;
             ms.speed_max = 3;
             if (cluster::fan_control::feature::multi_speed::add(cluster::get(ep, FanControl::Id), &ms) != ESP_OK)
                 ESP_LOGE(TAG, "風扇：加三段速度失敗");
         }
-        ESP_LOGW(TAG, "實驗模式：只有風扇（Fan，關／低／中／高，endpoint %u）", s_ep_fan);
+        ESP_LOGW(TAG, "實驗模式：只有風扇（Fan，關／低／中／高%s，endpoint %u）",
+                 CONFIG_FA_FAN_ONOFF ? "＋電源開關" : "", s_ep_fan);
     }
 #endif
     int failed = 0;

@@ -63,6 +63,14 @@ menu "WO30109 新風控制器"
             沒有電源開關、沒有自動。比照燈／窗簾／單一模式溫控器拿到塗鴉原生面板的規則（單一 endpoint、單一功能）。
             開發板沒有繼電器：輸出看 log（低＝K1、中＝K2、高＝K3，互鎖）與板載 RGB（綠色亮度＝風速）。
 
+    config FA_FAN_ONOFF
+        bool "風扇加電源開關（OnOff）"
+        depends on FA_DEVKIT_FAN_ONLY
+        default n
+        help
+            Fan endpoint 多一個 OnOff：輸出＝電源開 ? 風速 : 關；選風速時電源關著就自動開，開電源時風速是 0 就用低速。
+            塗鴉實驗：只有 Fan Control 時拿到通用頁面（未翻譯的 dp_fan_mode_*），測加電源開關能不能拿到原生風扇面板。
+
     config FA_HVAC_THERMOSTAT
         bool "溫控改用純 Thermostat 類型（沒有電源、風速；塗鴉面板實驗）"
         depends on FA_DEVKIT_HVAC_ONLY

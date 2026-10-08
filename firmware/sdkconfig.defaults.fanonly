@@ -1,3 +1,4 @@
 # 實驗：整台只有風扇（Fan 0x002B，關／低／中／高）。疊在 devkit 上（加 debuglog 可看塗鴉寫了什麼）：
 # idf.py -B build_fandbg -D FA_DBGLOG=1 -D SDKCONFIG=sdkconfig.fandbg -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.devkit;sdkconfig.defaults.fanonly;sdkconfig.defaults.debuglog" build
 CONFIG_FA_DEVKIT_FAN_ONLY=y
+CONFIG_FA_FAN_ONOFF=y
