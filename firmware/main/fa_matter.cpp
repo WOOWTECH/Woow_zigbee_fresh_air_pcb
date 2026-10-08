@@ -9,6 +9,7 @@
  *   「窗簾行程時間」下拉選單是同一個 endpoint 上的 Mode Select cluster
  *   實驗 CONFIG_FA_DEVKIT_HVAC_ONLY：只建一個 Room Air Conditioner endpoint（OnOff＋Thermostat 加熱／製冷＋Fan Control
  *   低中高自動＋攝氏顯示），單一 endpoint 讓塗鴉有機會給原生面板
+ *   實驗 CONFIG_FA_DEVKIT_FAN_ONLY：只建一個 Fan endpoint（Fan Control 關／低／中／高，三段速度，無電源、無自動）
  *   EP1–8 另帶 Fixed Label {ha_entitylabel: K1…K4／DI1…DI4}：HA 用它取代 entity 名稱裡的 endpoint 號碼
  *   （只對 HA 白名單內的 VID/PID 有效，測試 VID 0xFFF1/PID 0x8000 在內；docs/v4-matter-research.md §1）。
  * Endpoint 號碼依建立順序自動分配，實際值記在 s_ep_*（開機 log 會印）。
@@ -59,6 +60,7 @@ static uint16_t    s_ep_cover, s_ep_travel;      /* 窗簾與行程時間選單�
 static uint16_t    s_cover_pos = FA_COVER_FULL;  /* fa_net_cover_init 給的開機位置 */
 static uint32_t    s_cover_travel_ms = FA_COVER_TRAVEL_DEFAULT_MS;
 static uint16_t    s_ep_hvac;                    /* 新風溫控（沒建＝0） */
+static uint16_t    s_ep_fan;                     /* 風扇實驗（沒建＝0） */
 static bool        s_hvac_ready;                 /* server 起來後才把遙控端的風速當指令（開機還原不算） */
 static uint8_t     s_hvac_fan = FA_FAN_OFF;      /* Fan Control 目前的風速指令（FA_FAN_*，由 delegate 更新） */
 
@@ -292,6 +294,13 @@ public:
                    : st.mode == FanControl::FanModeEnum::kMedium ? FA_FAN_MED : FA_FAN_HIGH;
             break;
         }
+        if (s_ep_fan) {                                      /* 風扇實驗（與溫控實驗互斥）：沒有自動，開＝高 */
+            uint8_t sp = f == FA_FAN_AUTO ? (uint8_t)FA_FAN_HIGH : f;
+            ESP_LOGI(TAG, "風扇指令：模式 %u、速度 %u → %u", chip::to_underlying(st.mode),
+                     st.speedSetting.IsNull() ? 255 : st.speedSetting.Value(), sp);
+            if (s_cb.fan) s_cb.fan(sp);
+            return;
+        }
         s_hvac_fan = f;
         if (s_hvac_ready && f != FA_FAN_OFF) hvac_power_on_if_off("選了風速");
         push_hvac();
@@ -432,6 +441,12 @@ static void on_event(const ChipDeviceEvent *e, intptr_t arg)
         refresh_light();                         /* 開機時套用上次存的燈狀態（屬性有存 NVS） */
 #endif
         s_hvac_ready = true;
+        if (s_ep_fan && s_cb.fan)                /* 風扇：開機時套用存在 NVS 的風速（FanMode 會還原） */
+            if (FanControlCluster *fc = FanControl::FindClusterOnEndpoint(s_ep_fan)) {
+                auto sp = fc->GetSpeedSetting();
+                s_cb.fan(fc->GetFanMode() == FanControl::FanModeEnum::kOff ? 0
+                         : (!sp.IsNull() && sp.Value() <= 3) ? sp.Value() : (uint8_t)FA_FAN_HIGH);
+            }
         push_hvac();                             /* 溫控：開機時套用存在 NVS 的開關／模式／設定溫度 */
         [[fallthrough]];
     case DeviceEventType::kCommissioningComplete:
@@ -526,6 +541,17 @@ extern "C" void fa_net_report_hvac(int16_t temp, uint8_t running, uint8_t fan)
     }
 }
 
+extern "C" void fa_net_report_fan(uint8_t speed)
+{
+    if (!s_ep_fan) return;
+    static const uint8_t PCT[] = {0, 33, 66, 100};
+    lock::ScopedChipStackLock lk(portMAX_DELAY);
+    if (FanControlCluster *fc = FanControl::FindClusterOnEndpoint(s_ep_fan)) {
+        fc->SetSpeedCurrent(speed > 3 ? 3 : speed);
+        fc->SetPercentCurrent(PCT[speed > 3 ? 3 : speed]);
+    }
+}
+
 extern "C" bool fa_net_joined(void) { return s_commissioned && s_net_up; }
 extern "C" bool fa_net_commissioned(void) { return s_commissioned; }
 
@@ -567,7 +593,7 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
     node_t *node = node::create(&node_cfg, on_attr, on_identify);
     if (!node) { ESP_LOGE(TAG, "建立 Matter node 失敗"); return; }
 
-#if !CONFIG_FA_DEVKIT_LIGHT_ONLY && !CONFIG_FA_DEVKIT_COVER_ONLY && !CONFIG_FA_DEVKIT_HVAC_ONLY
+#if !CONFIG_FA_DEVKIT_LIGHT_ONLY && !CONFIG_FA_DEVKIT_COVER_ONLY && !CONFIG_FA_DEVKIT_HVAC_ONLY && !CONFIG_FA_DEVKIT_FAN_ONLY
     for (int ch = 0; ch < 4; ch++) {
         on_off_plug_in_unit::config_t c;
         c.on_off.on_off = false;
@@ -756,8 +782,28 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
                  s_ep_hvac);
     }
 #endif
+#if CONFIG_FA_DEVKIT_FAN_ONLY
+    {
+        /* 純 Fan（0x002B）：Fan Control 關／低／中／高、MultiSpeed 三段；沒有 OnOff、沒有 Auto */
+        endpoint::fan::config_t c;
+        c.fan_control.fan_mode = chip::to_underlying(FanControl::FanModeEnum::kOff);
+        c.fan_control.fan_mode_sequence = chip::to_underlying(FanControl::FanModeSequenceEnum::kOffLowMedHigh);
+        c.fan_control.delegate = &s_fan_delegate;
+        endpoint_t *ep = endpoint::fan::create(node, &c, ENDPOINT_FLAG_NONE, nullptr);
+        s_ep_fan = ep ? endpoint::get_id(ep) : 0;
+        if (ep) {
+            cluster::fan_control::feature::multi_speed::config_t ms;
+            ms.speed_max = 3;
+            if (cluster::fan_control::feature::multi_speed::add(cluster::get(ep, FanControl::Id), &ms) != ESP_OK)
+                ESP_LOGE(TAG, "風扇：加三段速度失敗");
+        }
+        ESP_LOGW(TAG, "實驗模式：只有風扇（Fan，關／低／中／高，endpoint %u）", s_ep_fan);
+    }
+#endif
     int failed = 0;
-#if CONFIG_FA_DEVKIT_HVAC_ONLY
+#if CONFIG_FA_DEVKIT_FAN_ONLY
+    failed = !s_ep_fan;
+#elif CONFIG_FA_DEVKIT_HVAC_ONLY
     failed = !s_ep_hvac;
 #elif CONFIG_FA_DEVKIT_COVER_ONLY
     failed = !s_ep_cover + !s_ep_travel;

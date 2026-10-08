@@ -56,5 +56,8 @@ firmware/sdkconfig.thermodbg.old
 firmware/build_cooldbg/
 firmware/sdkconfig.cooldbg
 firmware/sdkconfig.cooldbg.old
+firmware/build_fandbg/
+firmware/sdkconfig.fandbg
+firmware/sdkconfig.fandbg.old
 firmware/managed_components/
 firmware/test/test_core

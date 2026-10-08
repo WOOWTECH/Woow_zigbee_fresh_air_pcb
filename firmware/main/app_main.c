@@ -33,6 +33,9 @@
 #if CONFIG_FA_DEVKIT_COVER_ONLY
 #include "fa_cover.h"
 #endif
+#if CONFIG_FA_DEVKIT_FAN_ONLY
+#include "fa_hvac.h"                           /* 借用 fa_hvac_rgb 顯示風速 */
+#endif
 #if CONFIG_FA_DEVKIT_HVAC_ONLY
 #include "driver/temperature_sensor.h"
 #endif
@@ -330,8 +333,8 @@ static void rf_task(void *arg)
         fa_action_t a[8];
         xSemaphoreTake(s_lock, portMAX_DELAY);
         bool known = fa_remotes_has(&s_remotes, addr);
-#if CONFIG_FA_DEVKIT_COVER_ONLY || CONFIG_FA_DEVKIT_HVAC_ONLY
-        int n = 0;                                                 /* 窗簾／溫控實驗：遙控器先不接繼電器 */
+#if CONFIG_FA_DEVKIT_COVER_ONLY || CONFIG_FA_DEVKIT_HVAC_ONLY || CONFIG_FA_DEVKIT_FAN_ONLY
+        int n = 0;                                                 /* 窗簾／溫控／風扇實驗：遙控器先不接繼電器 */
         (void)known;
 #else
         int n = (known && ch >= 0) ? fa_io_rf(&s_io, &s_relays, (uint8_t)ch, t, a, 8) : 0;
@@ -557,6 +560,26 @@ static void cover_step(uint32_t t)
 }
 #endif
 
+#if CONFIG_FA_DEVKIT_FAN_ONLY
+/* ---------------- 風扇實驗：controller 設風速，這裡切繼電器（低＝K1、中＝K2、高＝K3，互鎖）、回報 ---------------- */
+static volatile uint8_t s_fan_want;              /* controller 設的風速 0–3 */
+static uint8_t          s_fan_out;               /* 目前輸出（只在 ui_task） */
+
+static void net_fan(uint8_t speed) { s_fan_want = speed > 3 ? 3 : speed; }   /* CHIP 執行緒呼叫 */
+
+static void fan_step(void)
+{
+    uint8_t w = s_fan_want;
+    if (w == s_fan_out) return;
+    for (uint8_t k = 0; k < 3; k++) if (k + 1 != w) relay_set(k, false);   /* 先關其他段再開這段 */
+    if (w) relay_set(w - 1, true);
+    static const char *const NAME[] = {"關", "低（K1）", "中（K2）", "高（K3）"};
+    ESP_LOGI(TAG, "風扇輸出：%s → %s", NAME[s_fan_out], NAME[w]);
+    s_fan_out = w;
+    fa_net_report_fan(w);
+}
+#endif
+
 #if CONFIG_FA_DEVKIT_HVAC_ONLY
 /* ---------------- 新風溫控實驗：fa_hvac 決定輸出，這裡接溫度、log、Matter、RGB ---------------- */
 static fa_hvac_t        s_hvac;                  /* 以下三個由 s_lock 保護 */
@@ -648,6 +671,8 @@ static void ui_task(void *arg)
         }
 #if CONFIG_FA_DEVKIT_COVER_ONLY
         cover_step(t);                                             /* 窗簾實驗：DI／遙控器不接繼電器（K1、K2 歸窗簾） */
+#elif CONFIG_FA_DEVKIT_FAN_ONLY
+        fan_step();                                                /* 風扇實驗：DI／遙控器不接繼電器 */
 #elif CONFIG_FA_DEVKIT_HVAC_ONLY
         hvac_step(t);                                              /* 溫控實驗：DI／遙控器不接繼電器 */
 #else
@@ -684,7 +709,19 @@ static void ui_task(void *arg)
             xSemaphoreTake(s_lock, portMAX_DELAY);
             memcpy(on, s_relays.on, sizeof on);
             xSemaphoreGive(s_lock);
-#if CONFIG_FA_DEVKIT_HVAC_ONLY
+#if CONFIG_FA_DEVKIT_FAN_ONLY
+            bool special = led.held_ms >= FA_BTN_LONG_MIN || led.learning || led.identifying || led.net != FA_LED_NET_ONLINE;
+            if (special) {                                         /* 異常狀態照常閃白燈 */
+                bool none[FA_CH] = {0};
+                fa_rgb_t c = fa_led_rgb(fa_led_level(&led, t), none);
+                ws2812_set(c.r, c.g, c.b);
+            } else {                                               /* 綠色亮度＝風速，關＝暗 */
+                fa_hvac_out_t fo = {.fan = s_fan_out};
+                fa_rgb_t c = fa_hvac_rgb(&fo, 96);
+                ws2812_set(c.r, c.g, c.b);
+            }
+            (void)on;
+#elif CONFIG_FA_DEVKIT_HVAC_ONLY
             bool special = led.held_ms >= FA_BTN_LONG_MIN || led.learning || led.identifying || led.net != FA_LED_NET_ONLINE;
             if (special) {                                         /* 異常狀態照常閃白燈 */
                 bool none[FA_CH] = {0};
@@ -818,6 +855,9 @@ void app_main(void)
 #endif
 #if CONFIG_FA_DEVKIT_HVAC_ONLY
                                               .hvac = net_hvac,
+#endif
+#if CONFIG_FA_DEVKIT_FAN_ONLY
+                                              .fan = net_fan,
 #endif
 #if CONFIG_FA_DEVKIT_COVER_ONLY
                                               .cover_goto = net_cover_goto, .cover_stop = net_cover_stop,

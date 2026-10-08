@@ -20,7 +20,7 @@ menu "WO30109 新風控制器"
 
     config FA_DEVKIT_LIGHT
         bool "開發板：多一個 Matter 彩色燈（EP21）"
-        depends on FA_DEVKIT_RGB && !FA_DEVKIT_COVER_ONLY && !FA_DEVKIT_HVAC_ONLY
+        depends on FA_DEVKIT_RGB && !FA_DEVKIT_COVER_ONLY && !FA_DEVKIT_HVAC_ONLY && !FA_DEVKIT_FAN_ONLY
         default n
         help
             板載 RGB 燈同時當 Matter Extended Color Light（色盤、色溫 2000–6000K、亮度），給 controller 測燈用。
@@ -53,6 +53,15 @@ menu "WO30109 新風控制器"
             溫控邏輯在 fa_core/fa_hvac（±FA_HVAC_HYST、最少開／關 FA_HVAC_MIN_CYCLE_S、加熱關後吹風 60 秒）。
             開發板沒有繼電器：輸出看 log 與板載 RGB（加熱紅、製冷藍、送風綠，亮度＝風速）。
             室溫先用 ESP32-C6 內建溫度感測器（量的是晶片溫度，比室溫高；只用來測控制與各 App 面板）。
+
+    config FA_DEVKIT_FAN_ONLY
+        bool "實驗：整台裝置只有風扇（Fan，關／低／中／高）"
+        depends on FA_DEVKIT_RGB && !FA_DEVKIT_LIGHT_ONLY && !FA_DEVKIT_COVER_ONLY && !FA_DEVKIT_HVAC_ONLY
+        default n
+        help
+            Matter 只建一個 Fan（0x002B）endpoint：Fan Control（FanModeSequence＝OffLowMedHigh、MultiSpeed 三段），
+            沒有電源開關、沒有自動。比照燈／窗簾／單一模式溫控器拿到塗鴉原生面板的規則（單一 endpoint、單一功能）。
+            開發板沒有繼電器：輸出看 log（低＝K1、中＝K2、高＝K3，互鎖）與板載 RGB（綠色亮度＝風速）。
 
     config FA_HVAC_THERMOSTAT
         bool "溫控改用純 Thermostat 類型（沒有電源、風速；塗鴉面板實驗）"
