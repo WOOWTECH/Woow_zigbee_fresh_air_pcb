@@ -1,0 +1,3 @@
+# 實驗：只加熱 Thermostat＋同 endpoint 風速（疊在 thermostat 之後）：
+# idf.py -B build_tfdbg -D FA_DBGLOG=1 -D SDKCONFIG=sdkconfig.tfdbg -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.devkit;sdkconfig.defaults.thermostat;sdkconfig.defaults.thermofan;sdkconfig.defaults.debuglog" build
+CONFIG_FA_HVAC_THERMO_FAN=y

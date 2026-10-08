@@ -798,8 +798,9 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
             cluster::thermostat::attribute::create_thermostat_running_state(tc, 0);
             cluster::thermostat_user_interface_configuration::config_t ui;        /* 攝氏（Thermostat 版也要：塗鴉面板少了它會載入失敗？實驗中） */
             cluster::thermostat_user_interface_configuration::create(ep, &ui, CLUSTER_FLAG_SERVER);
-#if !CONFIG_FA_HVAC_THERMOSTAT
-            /* 風速：關／低／中／高／自動（FanModeSequence 2）、三段速度 */
+#if !CONFIG_FA_HVAC_THERMOSTAT || CONFIG_FA_HVAC_THERMO_FAN
+            /* 風速：關／低／中／高／自動（FanModeSequence 2）、三段速度
+             * （FA_HVAC_THERMO_FAN：掛在純 Thermostat 上，測塗鴉溫控面板能不能帶風速，像風機盤管溫控器） */
             cluster::fan_control::config_t fc;
             fc.fan_mode = chip::to_underlying(FanControl::FanModeEnum::kAuto);
             fc.fan_mode_sequence = chip::to_underlying(FanControl::FanModeSequenceEnum::kOffLowMedHighAuto);
@@ -814,7 +815,7 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
         }
         ESP_LOGW(TAG, "實驗模式：只有新風溫控（%s，endpoint %u）",
 #if CONFIG_FA_HVAC_HEAT_ONLY
-                 "Thermostat 只加熱，無電源／風速",
+                 CONFIG_FA_HVAC_THERMO_FAN ? "Thermostat 只加熱＋風速" : "Thermostat 只加熱，無電源／風速",
 #elif CONFIG_FA_HVAC_COOL_ONLY
                  "Thermostat 只製冷，無電源／風速",
 #elif CONFIG_FA_HVAC_THERMOSTAT

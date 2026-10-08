@@ -105,6 +105,14 @@ menu "WO30109 新風控制器"
             Thermostat 只開 Cooling feature、ControlSequenceOfOperation＝CoolingOnly，沒有加熱設定點與電源開關。
             比照只加熱拿到塗鴉原生溫控面板的組合，測只製冷是否也能拿到。
 
+    config FA_HVAC_THERMO_FAN
+        bool "純 Thermostat 同一個 endpoint 加風速（Fan Control）"
+        depends on FA_HVAC_THERMOSTAT
+        default n
+        help
+            Thermostat endpoint 加 Fan Control（關／低／中／高／自動、三段）。塗鴉自家溫控品類（wk）有 fan_speed_enum，
+            風機盤管溫控器就是溫控＋風速；測單一模式溫控器加風速後，塗鴉原生溫控面板會不會帶出風速。
+
     config FA_HVAC_HYST_CENTI
         int "溫控緩衝（0.01 °C）"
         depends on FA_DEVKIT_HVAC_ONLY
