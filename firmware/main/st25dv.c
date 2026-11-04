@@ -11,9 +11,9 @@ static const char *TAG = "st25dv";
 #define ADDR_SYS  0x57
 #define I2C_HZ    400000          /* 10k 上拉、走線約 5cm：上升時間遠小於 Fast-mode 的 300ns 上限 */
 #define TIMEOUT   50
-#define ACK_POLL_MS 20
+#define ACK_POLL_TIMEOUT_MS 20
 /* FreeRTOS tick 是 10 ms：比 1 tick 短的逾時換算成 0 tick，I2C 交易一定回報逾時（2026-11-04 實機：5 ms 全部 ESP_ERR_TIMEOUT） */
-_Static_assert(pdMS_TO_TICKS(TIMEOUT) >= 1 && pdMS_TO_TICKS(ACK_POLL_MS) >= 1, "I2C 逾時短於 1 tick");
+_Static_assert(pdMS_TO_TICKS(TIMEOUT) >= 1 && pdMS_TO_TICKS(ACK_POLL_TIMEOUT_MS) >= 1, "I2C 逾時短於 1 tick");
 
 static i2c_master_bus_handle_t s_bus;
 static i2c_master_dev_handle_t s_user, s_sys;
@@ -45,8 +45,8 @@ static esp_err_t rd(i2c_master_dev_handle_t d, uint16_t addr, void *buf, size_t 
 static esp_err_t wait_ready(uint16_t dev_addr)
 {
     for (int i = 0; i < 30; i++) {
-        if (i2c_master_probe(s_bus, dev_addr, ACK_POLL_MS) == ESP_OK) return ESP_OK;
-        vTaskDelay(1);
+        if (i2c_master_probe(s_bus, dev_addr, ACK_POLL_TIMEOUT_MS) == ESP_OK) return ESP_OK;
+        vTaskDelay(1);                                   /* pdMS_TO_TICKS(1) 是 0，等於沒有等 */
     }
     return ESP_ERR_TIMEOUT;
 }

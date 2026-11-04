@@ -20,6 +20,7 @@
  */
 #include "fa_net.h"
 
+#include <esp_event.h>
 #include <esp_log.h>
 #include <esp_matter.h>
 #include <app/clusters/mode-select-server/supported-modes-manager.h>
@@ -29,11 +30,11 @@
 #include <app/server/Server.h>
 #include <esp_matter_providers.h>
 #include <platform/DeviceInfoProvider.h>
-#include <platform/PlatformManager.h>
 #if CHIP_DEVICE_CONFIG_ENABLE_THREAD
 #include <platform/ESP32/OpenthreadLauncher.h>
 #include <esp_openthread.h>
 #include <esp_openthread_lock.h>
+#include <esp_openthread_types.h>
 #include <openthread/platform/radio.h>
 #endif
 
@@ -463,12 +464,11 @@ static esp_err_t on_identify(identification::callback_type_t type, uint16_t ep, 
 static void refresh_commissioned()
 {
     s_commissioned = chip::Server::GetInstance().GetFabricTable().FabricCount() > 0;
+    ESP_LOGI(TAG, "配對狀態：%s", s_commissioned ? "已配對" : "未配對（可配對）");
 }
 
 #if CHIP_DEVICE_CONFIG_ENABLE_THREAD
-/* 802.15.4 驅動預設最大功率（+20dBm），超過 12V 電源預算：限制在 CONFIG_FA_TX_POWER（Kconfig help）。
- * esp_matter::start 一完成就設，入網時再設一次並記錄實際值。不能掛在 kServerReady：Thread 版要等 DNS-SD 初始化完成才發，
- * 實測未配對時 45 秒內都沒發，已配對時也比入網晚 1–2 秒，入網階段都是 +20dBm。 */
+/* 802.15.4 驅動預設最大功率（+20dBm），超過 12V 電源預算：限制在 CONFIG_FA_TX_POWER（Kconfig help）。入網時再設一次並記錄實際值。 */
 static void limit_tx_power()
 {
     esp_openthread_lock_acquire(portMAX_DELAY);
@@ -478,6 +478,13 @@ static void limit_tx_power()
     otPlatRadioGetTransmitPower(ot, &actual);
     esp_openthread_lock_release();
     ESP_LOGI(TAG, "Thread 發射功率 %d dBm", actual);
+}
+
+/* OpenThread 初始化完、主迴圈開始之前會發這個事件，這時設定功率，第一個封包就是限制後的功率。
+ * 不能掛在 kServerReady：Thread 版要等 DNS-SD 初始化完成才發，舊 log 顯示比入網還晚 1–2 秒，入網階段都是 +20dBm。 */
+static void on_openthread_start(void *, esp_event_base_t, int32_t, void *)
+{
+    limit_tx_power();
 }
 #endif
 
@@ -502,7 +509,6 @@ static void on_event(const ChipDeviceEvent *e, intptr_t arg)
     case DeviceEventType::kCommissioningComplete:
     case DeviceEventType::kFabricRemoved:
         refresh_commissioned();
-        ESP_LOGI(TAG, "配對狀態：%s", s_commissioned ? "已配對" : "未配對（可配對）");
         break;
 #if CHIP_DEVICE_CONFIG_ENABLE_THREAD
     case DeviceEventType::kThreadConnectivityChange:
@@ -901,19 +907,17 @@ extern "C" void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg)
         .port_config = {.storage_partition_name = "nvs", .netif_queue_size = 10, .task_queue_size = 10},
     };
     set_openthread_platform_config(&ot);
+    esp_err_t err = esp_event_loop_create_default();   /* esp_matter::start 接受 default loop 已經存在 */
+    if (err == ESP_OK || err == ESP_ERR_INVALID_STATE)
+        err = esp_event_handler_register(OPENTHREAD_EVENT, OPENTHREAD_EVENT_START, on_openthread_start, nullptr);
+    if (err != ESP_OK) ESP_LOGE(TAG, "註冊 OpenThread 事件失敗：%s；要到入網才會限制發射功率", esp_err_to_name(err));
 #endif
     esp_matter::set_custom_device_info_provider(&s_info);   /* 一定要在 start 前：Fixed Label cluster 沒有 provider 會 VerifyOrDie */
     if (esp_matter::start(on_event) != ESP_OK) {
         ESP_LOGE(TAG, "Matter 啟動失敗");
         return;
     }
-#if CHIP_DEVICE_CONFIG_ENABLE_THREAD
-    limit_tx_power();
-#endif
     /* 配對狀態也不等 kServerReady：Thread 版沒有邊界路由器時等不到，已配對的板子會一直顯示未配對 */
-    CHIP_ERROR err = chip::DeviceLayer::PlatformMgr().ScheduleWork([](intptr_t) {
-        refresh_commissioned();
-        ESP_LOGI(TAG, "配對狀態：%s", s_commissioned ? "已配對" : "未配對（可配對）");
-    });
-    if (err != CHIP_NO_ERROR) ESP_LOGE(TAG, "排程讀取配對狀態失敗");
+    lock::ScopedChipStackLock lock(portMAX_DELAY);
+    refresh_commissioned();
 }
