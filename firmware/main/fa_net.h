@@ -31,7 +31,7 @@ typedef struct {
 } fa_net_cb_t;
 
 void fa_net_start(const fa_net_cb_t *cb, const fa_io_cfg_t *cfg);
-bool fa_net_joined(void);           /* 已配對且網路已連線 */
+bool fa_net_joined(void);           /* 網路已連線：Thread 版要已入網，而且網路裡有邊界路由器 */
 bool fa_net_commissioned(void);     /* 至少加入一個 Matter fabric（不管目前連線與否） */
 /* 本地（按鍵／遙控器／DI／互鎖）改變繼電器後同步 4 路 On/Off 狀態 */
 void fa_net_sync(const bool on[4]);
