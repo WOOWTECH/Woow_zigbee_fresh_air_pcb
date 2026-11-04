@@ -35,7 +35,9 @@
 #include <esp_openthread.h>
 #include <esp_openthread_lock.h>
 #include <esp_openthread_types.h>
+#include <openthread/netdata.h>
 #include <openthread/platform/radio.h>
+#include <openthread/thread.h>
 #endif
 
 extern "C" {
@@ -488,6 +490,31 @@ static void on_openthread_start(void *, esp_event_base_t, int32_t, void *)
 }
 #endif
 
+#if CHIP_DEVICE_CONFIG_ENABLE_THREAD
+/* 「已連線」＝已入網，而且網路裡有邊界路由器。只看入網不夠：FTD 找不到鄰居時會自己當 Leader，CHIP 也算已入網，
+ * 狀態燈會顯示正常。on-mesh＋SLAAC 的 prefix 是邊界路由器發布的（OMR）。 */
+static bool thread_has_border_router(otInstance *ot)
+{
+    otNetworkDataIterator it = OT_NETWORK_DATA_ITERATOR_INIT;
+    otBorderRouterConfig prefix;
+    while (otNetDataGetNextOnMeshPrefix(ot, &it, &prefix) == OT_ERROR_NONE)
+        if (prefix.mOnMesh && prefix.mSlaac) return true;
+    return false;
+}
+
+static void refresh_net_up()
+{
+    esp_openthread_lock_acquire(portMAX_DELAY);
+    otInstance *ot = esp_openthread_get_instance();
+    otDeviceRole role = otThreadGetDeviceRole(ot);
+    bool up = role != OT_DEVICE_ROLE_DISABLED && role != OT_DEVICE_ROLE_DETACHED && thread_has_border_router(ot);
+    esp_openthread_lock_release();
+    if (up == s_net_up) return;
+    s_net_up = up;
+    ESP_LOGI(TAG, "Thread %s", up ? "已連線" : "斷線");
+}
+#endif
+
 static void on_event(const ChipDeviceEvent *e, intptr_t arg)
 {
     using namespace chip::DeviceLayer;
@@ -511,10 +538,11 @@ static void on_event(const ChipDeviceEvent *e, intptr_t arg)
         refresh_commissioned();
         break;
 #if CHIP_DEVICE_CONFIG_ENABLE_THREAD
+    case DeviceEventType::kThreadStateChange:
+        if (e->ThreadStateChange.RoleChanged || e->ThreadStateChange.NetDataChanged) refresh_net_up();
+        break;
     case DeviceEventType::kThreadConnectivityChange:
-        s_net_up = e->ThreadConnectivityChange.Result == kConnectivity_Established;
-        ESP_LOGI(TAG, "Thread %s", s_net_up ? "已連線" : "斷線");
-        if (s_net_up) limit_tx_power();
+        if (e->ThreadConnectivityChange.Result == kConnectivity_Established) limit_tx_power();
         break;
 #endif
 #if CHIP_DEVICE_CONFIG_ENABLE_WIFI
